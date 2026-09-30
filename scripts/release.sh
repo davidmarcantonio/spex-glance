@@ -38,6 +38,26 @@ PUBLISH="${2:-}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || date +%s)"
 DIST="dist"; rm -rf "$DIST"; mkdir -p "$DIST"
 
+# Release notes come from CHANGELOG.md: the "## $VERSION" section, up to the next "## ".
+# Markdown for the GitHub Release body; the same text as HTML inside the appcast for Sparkle's sheet.
+NOTES_MD="$(awk -v v="$VERSION" '/^## /{p=($2==v)} p&&!/^## /' CHANGELOG.md | sed -e '/./,$!d')"
+[ -n "$NOTES_MD" ] || { echo "CHANGELOG.md has no '## $VERSION' section. Write the notes first."; exit 1; }
+NOTES_HTML="$(printf '%s\n' "$NOTES_MD" | python3 -c '
+import sys, html
+out, inlist = [], False
+for line in sys.stdin.read().splitlines():
+    s = line.strip()
+    if s.startswith("- "):
+        if not inlist: out.append("<ul>"); inlist = True
+        out.append("  <li>" + html.escape(s[2:]) + "</li>")
+    else:
+        if inlist: out.append("</ul>"); inlist = False
+        if s: out.append("<p>" + html.escape(s) + "</p>")
+if inlist: out.append("</ul>")
+print("\n".join(out))
+')"
+printf '%s\n' "$NOTES_MD" > "$DIST/notes.md"
+
 sed -i '' "s/MARKETING_VERSION: \".*\"/MARKETING_VERSION: \"$VERSION\"/; s/CURRENT_PROJECT_VERSION: \".*\"/CURRENT_PROJECT_VERSION: \"$BUILD\"/" project.yml
 scripts/gen.sh
 
@@ -92,6 +112,9 @@ ITEM="    <item>
       <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
       <pubDate>$DATE</pubDate>
+      <description><![CDATA[
+$NOTES_HTML
+      ]]></description>
       <enclosure url=\"$DL\" $SIG type=\"application/octet-stream\" />
     </item>"
 # newest first, right after the channel title
@@ -99,10 +122,10 @@ ITEM="$ITEM" perl -0pi -e 's|(<title>Spex Glance</title>\n)|$1$ENV{ITEM}\n|' app
 
 echo "Built $DMG"
 if [ "$PUBLISH" = "--publish" ]; then
-  git add project.yml appcast.xml
+  git add project.yml appcast.xml CHANGELOG.md
   git commit -m "Release $VERSION" || true
   git tag -a "v$VERSION" -m "Spex Glance $VERSION"
   git push && git push --tags
-  gh release create "v$VERSION" "$DMG" --title "Spex Glance $VERSION" --generate-notes
+  gh release create "v$VERSION" "$DMG" --title "Spex Glance $VERSION" --notes-file "$DIST/notes.md"
   echo "Published. Sparkle clients see $VERSION on their next check (daily, or Check for Updates…)."
 fi
