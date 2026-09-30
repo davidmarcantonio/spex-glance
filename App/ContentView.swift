@@ -161,6 +161,7 @@ struct ContentView: View {
                         }
                     }
                 }
+                }
                 if !model.health.isOK {
                     Label {
                         Text(model.health.summary + (model.healthChangedAt.map { " · since \(Fmt.gameTime($0))" } ?? "")
