@@ -30,10 +30,10 @@ struct SpexGlanceApp: App {
                 Button("Refresh") { Task { await model.refresh() } }
                     .keyboardShortcut("r", modifiers: .command)
                 Divider()
-                // ⌘M: same switch as Settings → Menu bar → Work Mode. Hides the menu bar icon,
-                // the "$" sign, the money tiles and the bottom buttons; leaves the positions.
+                // ⌘⇧M (plain ⌘M is macOS Minimize): same switch as Settings → Menu bar → Work Mode.
+                // Hides the menu bar icon, the "$" sign, the money tiles and the bottom buttons.
                 Toggle("Work Mode", isOn: $workMode)
-                    .keyboardShortcut("m", modifiers: .command)
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
             }
         }
 

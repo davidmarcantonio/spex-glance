@@ -125,7 +125,7 @@ struct ContentView: View {
                         .padding(.trailing, 4)
                     }
                 }
-                // Work Mode (⌘M): no money tiles, just the positions.
+                // Work Mode (⌘⇧M): no money tiles, just the positions.
                 if !workMode {
                     HStack(alignment: .top, spacing: 12) {
                         StatTile(title: "Cash", value: Fmt.dollars(snap?.balanceDollars))
@@ -191,6 +191,13 @@ struct ContentView: View {
                                 Text("live")
                             }
                         }
+                        // Kalshi's own health, always on: green means the status check is running
+                        // and Kalshi reports itself up. Colors match the menu bar tint.
+                        Circle()
+                            .fill(model.health.tint.map { Color(nsColor: $0) } ?? .green)
+                            .frame(width: 6, height: 6)
+                        Text(model.health.badge.map { "Kalshi \($0)" } ?? "Kalshi")
+                            .help(model.health.summary)
                     }
                     .font(.footnote).foregroundStyle(.tertiary)
                 }
