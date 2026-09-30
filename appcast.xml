@@ -3,6 +3,25 @@
   <channel>
     <title>Spex Glance</title>
     <item>
+      <title>Spex Glance 0.2.2</title>
+      <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.2.2</link>
+      <sparkle:version>18</sparkle:version>
+      <sparkle:shortVersionString>0.2.2</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 30 Sep 2026 15:01:44 -0700</pubDate>
+      <description><![CDATA[
+<h2>Spex Glance 0.2.2</h2>
+<h3>Know when it's your network, not Kalshi</h3>
+<ul>
+<li>If your Mac loses its network connection, the line at the top of the window now says "Computer network offline" (with when the numbers were last updated) instead of quietly going stale.</li>
+<li>The menu bar icon turns gray with an "offline" badge, and the dropdown says the same. It clears on its own when the connection comes back.</li>
+<li>Before this, a dropped Wi-Fi connection could show up as "Kalshi down", which wasn't fair to Kalshi. The app now checks your own connection first and only reports on Kalshi when it can actually reach it.</li>
+<li>When the connection returns, the app reconnects and refreshes on its own within a few seconds; you don't have to wait for the next scheduled refresh or hit Refresh yourself.</li>
+</ul>
+      ]]></description>
+      <enclosure url="https://github.com/davidmarcantonio/spex-glance/releases/download/v0.2.2/SpexGlance-0.2.2.dmg" sparkle:edSignature="Z4QJi7wZ84EKG2+vG2D+YHHDwsUvwTM0rKXdtyFCvfePxbu2IBp1Zy8WnnIpEbEkt5uZvaS2pb9Rfd4PL3fvAw==" length="2373505" type="application/octet-stream" />
+    </item>
+    <item>
       <title>Spex Glance 0.2.1</title>
       <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.2.1</link>
       <sparkle:version>14</sparkle:version>
