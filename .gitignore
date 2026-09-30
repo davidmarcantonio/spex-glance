@@ -1,0 +1,10 @@
+# Xcode
+*.xcodeproj
+xcuserdata/
+DerivedData/
+build/
+.DS_Store
+*.swp
+.team
+App/Assets.xcassets/AppIcon.appiconset/*.png
+dist/
