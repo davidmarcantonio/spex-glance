@@ -3,6 +3,58 @@
   <channel>
     <title>Spex Glance</title>
     <item>
+      <title>Spex Glance 0.2.0</title>
+      <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.2.0</link>
+      <sparkle:version>11</sparkle:version>
+      <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 30 Sep 2026 14:16:06 -0700</pubDate>
+      <description><![CDATA[
+<h2>Spex Glance 0.2.0</h2>
+<h3>Your positions now update the moment they change</h3>
+<p>
+Until now, prices streamed live but everything else waited for a refresh every five minutes. This version listens to Kalshi for the rest too.
+</p>
+<ul>
+<li>A fill, a sale, or a new order shows up in the window, the menu bar, and the widget within a couple of seconds.</li>
+<li>When Kalshi decides a game, "Final · awaiting settlement" flips to Won or Lost right away instead of on the next refresh. Combo legs get their check or cross the same way.</li>
+<li>Paid-out positions leave the list on their own, and your Cash figure catches up a moment later.</li>
+<li>The five-minute refresh still runs in the background as a safety net, so a dropped connection never leaves stale numbers on screen.</li>
+</ul>
+<h3>Know how fresh the numbers are</h3>
+<ul>
+<li>Kalshi stamps every message with the time it left their servers. Spex Glance now compares that to the time it arrives.</li>
+<li>The dot next to "live" turns amber and shows how many seconds behind you are if the feed falls more than 15 seconds back. Green means you're current.</li>
+<li>"Updated" in the window and the time on the widget now reflect the last live change, not just the last full refresh.</li>
+</ul>
+<h3>See when Kalshi itself is having trouble</h3>
+<ul>
+<li>The menu bar icon and P&amp;L turn ember when Kalshi is degraded (trading paused, a shard paused, the feed struggling) and red when it's down. Gray means scheduled maintenance.</li>
+<li>Open the dropdown for the reason and how long it's been going on. A Status page button opens the community-run kalshistatus.com in your browser.</li>
+<li>The app asks Kalshi's own status endpoint once a minute. It still contacts nothing but Kalshi.</li>
+<li>Your last good numbers stay on screen the whole time; nothing is blanked out.</li>
+</ul>
+<h3>Work Mode, expanded</h3>
+<ul>
+<li>Press ⌘M to toggle Work Mode from anywhere in the app.</li>
+<li>Work Mode now also hides the Cash, Positions and Total tiles and the buttons at the bottom of the window, so only your positions are on screen when you're sharing it.</li>
+<li>The "Spex Glance" wordmark no longer sits at the top of the main window.</li>
+</ul>
+<h3>Small fixes</h3>
+<ul>
+<li>Version numbers now show correctly in About and in update checks.</li>
+<li>Settings → About has a direct link to report a problem or ask a question (a GitHub issue, with your app and macOS versions filled in).</li>
+<li>Automatic update checks are on by default; no first-launch question. You can turn them off in Settings → Updates.</li>
+</ul>
+<h3>Under the hood</h3>
+<ul>
+<li>One WebSocket connection to Kalshi carries prices, position changes, order changes and market results. The app still only ever subscribes; it cannot place, change or cancel anything.</li>
+<li>Uses the same free, read-only API key as before. Nothing to set up.</li>
+</ul>
+      ]]></description>
+      <enclosure url="https://github.com/davidmarcantonio/spex-glance/releases/download/v0.2.0/SpexGlance-0.2.0.dmg" sparkle:edSignature="Z2wuL6o7WvpxzU6UBwoqV1dCF4jVscwpOy8RJS6/jTszg+OSse8HMKJZ2V3mzPO7Is4q6jw5fU1RRRru2iNbBA==" length="2360662" type="application/octet-stream" />
+    </item>
+    <item>
       <title>Spex Glance 0.1.0</title>
       <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.1.0</link>
       <sparkle:version>1</sparkle:version>
