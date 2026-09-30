@@ -68,6 +68,13 @@ final class LiveTicker {
         reconnect()
     }
 
+    /// The network just came back: drop any pending backoff and connect right away.
+    func reconnectNow() {
+        guard credential != nil, !tickers.isEmpty else { return }
+        attempts = 0
+        reconnect()
+    }
+
     func stop() {
         generation += 1
         task?.cancel(with: .goingAway, reason: nil)

@@ -162,7 +162,7 @@ struct ContentView: View {
                     }
                 }
                 }
-                if !model.health.isOK {
+                if !model.health.isOK, model.health != .offline {
                     Label {
                         Text(model.health.summary + (model.healthChangedAt.map { " · since \(Fmt.gameTime($0))" } ?? "")
                              + ". Numbers may be stale.")
@@ -171,7 +171,7 @@ struct ContentView: View {
                     }
                     .font(.footnote).foregroundStyle(Color(nsColor: model.health.tint ?? .secondaryLabelColor))
                 }
-                if let err = snap?.errorMessage {
+                if let err = snap?.errorMessage, model.isOnline {
                     Label(err, systemImage: "exclamationmark.triangle")
                         .font(.footnote).foregroundStyle(.orange)
                 }
@@ -179,7 +179,15 @@ struct ContentView: View {
                     Label(w, systemImage: "lock.open.trianglebadge.exclamationmark")
                         .font(.footnote).foregroundStyle(.orange)
                 }
-                if let t = snap?.updatedAt {
+                if !model.isOnline {
+                    HStack(spacing: 6) {
+                        Circle().fill(.gray).frame(width: 6, height: 6)
+                        Text("Computer network offline")
+                        if let s = model.healthChangedAt { Text("· since \(Fmt.gameTime(s))") }
+                        if let t = snap?.updatedAt { Text("· last update \(Fmt.relative(t))") }
+                    }
+                    .font(.footnote).foregroundStyle(.tertiary)
+                } else if let t = snap?.updatedAt {
                     HStack(spacing: 6) {
                         Text("Updated \(Fmt.relative(t))")
                         if case .live = model.liveState {

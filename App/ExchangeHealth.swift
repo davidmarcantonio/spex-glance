@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Network
 
 /// How Kalshi looks from this Mac right now. Judged from Kalshi's own `GET /exchange/status`
 /// plus what the app already sees: REST failures, socket drops, feed lag. No third-party
@@ -13,8 +14,14 @@ enum ExchangeHealth: Equatable {
     case down(String)
     /// Kalshi says it's maintenance (scheduled window, or a resume time was given). Gray.
     case maintenance(until: Date?)
+    /// This Mac has no network path at all. Kalshi is not to blame, so gray, not red.
+    case offline
 
     var isOK: Bool { self == .ok }
+    /// Same case, ignoring the reason text: "since" resets when this changes.
+    var kind: Int {
+        switch self { case .ok: return 0; case .degraded: return 1; case .down: return 2; case .maintenance: return 3; case .offline: return 4 }
+    }
     /// One line for the menu bar dropdown and the window banner.
     var summary: String {
         switch self {
@@ -24,6 +31,7 @@ enum ExchangeHealth: Equatable {
         case .maintenance(let until):
             if let u = until { return "Kalshi maintenance until \(Fmt.gameTime(u))" }
             return "Kalshi maintenance"
+        case .offline: return "Computer network offline"
         }
     }
     /// Tint for the icon, the P&L text and the dot. Nil = normal menu bar colors.
@@ -33,6 +41,7 @@ enum ExchangeHealth: Equatable {
         case .degraded: return NSColor(red: 1.0, green: 0.54, blue: 0.24, alpha: 1)   // ember #FF8A3D
         case .down: return .systemRed
         case .maintenance: return .systemGray
+        case .offline: return .systemGray
         }
     }
     /// Short word for the bar when there is no P&L to show, or in Work Mode.
@@ -42,6 +51,7 @@ enum ExchangeHealth: Equatable {
         case .degraded: return "slow"
         case .down: return "down"
         case .maintenance: return "maint"
+        case .offline: return "offline"
         }
     }
 }
@@ -66,6 +76,12 @@ final class ExchangeHealthMonitor {
     private var lastStatusError: String?
     private var maintenanceWindows: [(Date, Date)] = []
     private var lastScheduleFetch: Date = .distantPast
+
+    /// From NWPathMonitor. While false, nothing is polled and the verdict is .offline.
+    private var online = true
+    /// When the network last came back. The socket needs a moment to reconnect after that,
+    /// and that moment is the Mac's, not Kalshi's.
+    private var onlineSince: Date = .distantPast
 
     private var timer: Timer?
     private var environment: KalshiEnvironment = .prod
@@ -114,9 +130,31 @@ final class ExchangeHealthMonitor {
         recompute()
     }
 
+    func networkChanged(online: Bool) {
+        guard online != self.online else { return }
+        self.online = online
+        if online {
+            // Back on the network: forget failures that were only ever the Mac's fault, and give
+            // DNS a few seconds before asking Kalshi anything.
+            onlineSince = Date()
+            refreshFailures = 0
+            statusFailures = 0
+            socketState = .connecting
+            health = .ok
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard self.online else { return }
+                await self.poll()
+            }
+        } else {
+            recompute()
+        }
+    }
+
     // MARK: Polling
 
     func poll() async {
+        guard online else { recompute(); return }
         let gen = generation
         let client = PublicKalshiClient(environment: environment)
         do {
@@ -160,6 +198,8 @@ final class ExchangeHealthMonitor {
     // MARK: Verdict
 
     private func recompute() {
+        // 0. No network path on this Mac: nothing below can be trusted, and none of it is Kalshi's doing.
+        if !online { health = .offline; return }
         let now = Date()
         let inMaintenance = maintenanceWindows.first { $0.0 <= now && now <= $0.1 }
 
@@ -171,13 +211,18 @@ final class ExchangeHealthMonitor {
             return
         }
 
+        // Fresh off a network return, failures are still the Mac's to own for a little while.
+        let settling = now.timeIntervalSince(onlineSince) < 30
+
         // 2. Can't reach Kalshi. During a published maintenance window that's expected.
         let socketStruggling: Bool = {
             // The first retries (2 s, 4 s) are routine; ember only once it's clearly not coming back.
+            // Right after the network returns, give it 30 s before its state says anything about Kalshi.
+            if settling { return false }
             if case .backoff(let d) = socketState { return d >= 8 }
             return false
         }()
-        if statusFailures >= 2 {
+        if statusFailures >= 2, !settling {
             if let w = inMaintenance { health = .maintenance(until: w.1); return }
             if refreshFailures >= 2 || socketStruggling {
                 health = .down(shortError(lastStatusError ?? "")); return
@@ -193,8 +238,8 @@ final class ExchangeHealthMonitor {
                 health = .degraded("\(name) paused"); return
             }
         }
-        if refreshFailures >= 3 { health = .down(shortError(lastRefreshError ?? "")); return }
-        if refreshFailures == 2 { health = .degraded("refresh failing"); return }
+        if refreshFailures >= 3, !settling { health = .down(shortError(lastRefreshError ?? "")); return }
+        if refreshFailures == 2, !settling { health = .degraded("refresh failing"); return }
         if socketStruggling { health = .degraded("socket reconnecting"); return }
         // A rejected price subscription (.failed) is usually a settled ticker, not an outage; the
         // live dot already reports it. Feed lag is likewise shown by the dot and can be a fast
@@ -232,4 +277,25 @@ struct PublicKalshiClient {
         }
         return try JSONDecoder().decode(T.self, from: data)
     }
+}
+
+
+/// Watches whether this Mac has any usable network path. Fires on the main actor.
+final class NetworkMonitor {
+    private let monitor = NWPathMonitor()
+    private let queue = DispatchQueue(label: "spex.network-monitor")
+    private(set) var isOnline = true
+
+    func start(onChange: @escaping @MainActor (Bool) -> Void) {
+        monitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor in
+                self?.isOnline = online
+                onChange(online)
+            }
+        }
+        monitor.start(queue: queue)
+    }
+
+    func stop() { monitor.cancel() }
 }

@@ -131,6 +131,8 @@ The verdict tints the menu bar:
 - Red, "down": the exchange is halted, or three refreshes in a row have failed, or the status
   check and the data paths are both failing.
 - Gray, "maint": Kalshi reports a maintenance window or gave an estimated resume time.
+- Gray, "offline": this Mac has no network path (NWPathMonitor). Nothing is polled and Kalshi is
+  not blamed; the window says "Computer network offline" until the connection returns.
 
 Everything is counted in consecutive failures, so one dropped packet never tints the bar,
 and 401/403/429 (your key, not their exchange) never count.

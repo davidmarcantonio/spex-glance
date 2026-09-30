@@ -91,6 +91,9 @@ final class AppModel: ObservableObject {
     /// When `health` last left `.ok`, for "down since 12:40".
     @Published var healthChangedAt: Date?
     private let healthMonitor = ExchangeHealthMonitor()
+    /// False when the Mac has no network path. Drives the "Computer network offline" line.
+    @Published var isOnline = true
+    private let networkMonitor = NetworkMonitor()
     /// Group ids (game keys / combo tickers) currently expanded in the positions list.
     @Published var expandedGroups: Set<String> = []
     /// Set when the connected key turns out to have write scopes (checked once per launch).
@@ -142,10 +145,33 @@ final class AppModel: ObservableObject {
         }
         healthMonitor.onChange = { [weak self] h in
             guard let self else { return }
+            let prev = self.health
             self.health = h
-            if h.isOK { self.healthChangedAt = nil } else if self.healthChangedAt == nil { self.healthChangedAt = Date() }
+            if h.isOK { self.healthChangedAt = nil }
+            else if self.healthChangedAt == nil || prev.kind != h.kind { self.healthChangedAt = Date() }
         }
         if let cred = credential { healthMonitor.start(environment: cred.environment) }
+        networkMonitor.start { [weak self] online in
+            guard let self else { return }
+            let wasOnline = self.isOnline
+            self.isOnline = online
+            self.healthMonitor.networkChanged(online: online)
+            if online, !wasOnline, self.credential != nil {
+                // Back on the network. DNS and routes take a moment to settle, so wait before
+                // catching up, and try once more if the first attempt still fails.
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    guard self.isOnline else { return }
+                    self.ticker.reconnectNow()
+                    await self.refresh()
+                    if self.snapshot?.errorMessage != nil {
+                        try? await Task.sleep(nanoseconds: 12_000_000_000)
+                        guard self.isOnline else { return }
+                        await self.refresh()
+                    }
+                }
+            }
+        }
         // Fills, sells, settlements and new orders arrive over the socket; the 5-minute poll is
         // reconciliation, so a missed message or a dropped socket can't leave stale numbers up.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in

@@ -133,9 +133,11 @@ struct MenuBarView: View {
                 }
             }
             Spacer()
-            Button("Status page") { NSWorkspace.shared.open(URL(string: "https://kalshistatus.com")!) }
-                .font(.caption2)
-                .help("kalshistatus.com — an unofficial, community-run Kalshi status page")
+            if model.health != .offline {
+                Button("Status page") { NSWorkspace.shared.open(URL(string: "https://kalshistatus.com")!) }
+                    .font(.caption2)
+                    .help("kalshistatus.com — an unofficial, community-run Kalshi status page")
+            }
         }
     }
 
