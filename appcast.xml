@@ -3,6 +3,30 @@
   <channel>
     <title>Spex Glance</title>
     <item>
+      <title>Spex Glance 0.2.1</title>
+      <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.2.1</link>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 30 Sep 2026 14:32:23 -0700</pubDate>
+      <description><![CDATA[
+<h2>Spex Glance 0.2.1</h2>
+<p>
+A small follow-up to 0.2.0. Everyone on 0.2.0 should take this one.
+</p>
+<h3>Fixes</h3>
+<ul>
+<li>0.2.0 reported itself as version 1.0 in About and in update checks, which made the app keep offering the 0.2.0 update to itself. Fixed; this build and every one after it carries the right version.</li>
+<li>The Work Mode shortcut is now ⌘⇧M. Plain ⌘M is macOS's own Minimize shortcut and won that fight. The Positions menu shows the new key.</li>
+</ul>
+<h3>New</h3>
+<ul>
+<li>A small "Kalshi Health" dot next to "Live" at the top of the window shows Kalshi's own status at all times: green when Kalshi reports itself up, ember when degraded, red when down, gray during maintenance. Hover it for the reason. Before, this only appeared when something was wrong, so a healthy Kalshi and a check that wasn't running looked the same.</li>
+</ul>
+      ]]></description>
+      <enclosure url="https://github.com/davidmarcantonio/spex-glance/releases/download/v0.2.1/SpexGlance-0.2.1.dmg" sparkle:edSignature="XyYXAEbjHmoOLlmCLD9uglAlQ4M9ltChx4tS2r+gZWq4BmhybhO80tFE1H8dtYayXAkD1xsVS5lFEmGMWCkbBw==" length="2360942" type="application/octet-stream" />
+    </item>
+    <item>
       <title>Spex Glance 0.2.0</title>
       <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.2.0</link>
       <sparkle:version>11</sparkle:version>
