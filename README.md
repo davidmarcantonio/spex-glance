@@ -97,24 +97,37 @@ option for your account tier.
 
 To disconnect: tap *Disconnect* in the app, then delete the key on Kalshi's profile page.
 
-## Live prices on the Mac (menu bar)
+## Live updates on the Mac (menu bar)
 
 On macOS the app also installs a menu bar item: net unrealized P&L in the bar, and a
-dropdown with every open bet, live percentages, and per-bet P&L. Prices stream over
-Kalshi's WebSocket `ticker` channel, filtered to only the markets you hold, so a trade
-shows up within about a second. The socket sends nothing but `subscribe`; it is read-only
-like everything else here. If the socket drops it retries with backoff and the 5-minute
-REST poll keeps things honest in the meantime. Positions (fills, settlements) still come
-from the poll; only quotes stream.
+dropdown with every open bet, live percentages, and per-bet P&L. One WebSocket connection
+to Kalshi carries four read-only channels:
 
+- `ticker`, filtered to the markets you hold — a trade shows up within about a second.
+- `market_positions` and `user_orders`, unfiltered — a fill, a sale, a new resting order
+  or a payout changes the list within a couple of seconds. A market the app hasn't seen
+  yet (a brand-new buy) triggers one full reload for its names and sport.
+- `market_lifecycle_v2` — Kalshi's `determined` event flips "Final · awaiting settlement"
+  to Won/Lost the moment a game is decided; `settled` triggers a reload for the new cash
+  balance. This channel has no server-side filter, so the app drops everything that
+  isn't one of its markets.
+
+The socket sends nothing but `subscribe`; it is read-only like everything else here.
+Every message carries Kalshi's own send timestamp; if the feed falls more than 15 s
+behind, the live dot turns amber and says how far. If the socket drops it retries with
+backoff, and the 5-minute REST poll reconciles in the meantime, so a missed message can
+never leave stale numbers up for long.
 
 ## How refresh works
 
 - Widget: WidgetKit decides when it updates; the app asks for every ~15 minutes and
   macOS usually honors it within a 15–30 minute window. When the app has refreshed
   within the last two minutes the widget reuses that data instead of calling Kalshi again.
-- App: refreshes on launch, on pull/⌘R, and every 5 minutes while running.
-- Menu bar (macOS): quotes stream live over the WebSocket; positions come from the 5-minute poll.
+- App: loads on launch and on ⌘R; positions, orders, prices and results then stream in
+  over the WebSocket, with a full reload every 5 minutes (and 2 s after any push the app
+  can't apply in place) as reconciliation.
+- Menu bar and widget (macOS): read the same live snapshot; the widget cache is refreshed
+  on every position/order/result change and at most once a minute for price ticks.
 
 Each refresh makes 4–6 read-only calls: balance, positions, resting orders, a batched
 market lookup, plus one event lookup per new event and one series lookup per new series
@@ -136,10 +149,9 @@ never silently reclassified.
 
 ## Known gaps / verify against your account
 
-- Kalshi's order object is mid-migration between `side`/`action` and
-  `outcome_side`/`book_side`, and between cents and fixed-point dollar strings. The
-  `Order` model accepts both. If resting orders show wrong sides or prices, open an issue
-  with one redacted order JSON.
+- Order direction is read from Kalshi's canonical `outcome_side`/`book_side`, falling back
+  to the deprecated `side`/`action` pair only when those are missing. If resting orders
+  show wrong sides or prices, open an issue with one redacted order JSON.
 - Event titles come from `GET /events/{ticker}`; for combo (MVE) markets the title may be
   generic.
 - Unrealized P&L marks to the bid/ask midpoint (last trade when there is no book). Thin

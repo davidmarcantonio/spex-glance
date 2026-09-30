@@ -5,6 +5,9 @@
 #   scripts/release.sh 0.4.0            build, notarize, package, sign; leaves dist/ ready
 #   scripts/release.sh 0.4.0 --publish  also: git tag, GitHub Release, push appcast.xml
 #
+# Release notes: write docs/releases/<version>.md in plain English before running. They go into
+# the Sparkle update dialog (appcast <description>) and the GitHub Release body. Missing file = abort.
+#
 # Needs: Xcode, xcodegen, gh (brew install gh), a "Developer ID Application" certificate in the
 # login keychain (Xcode → Settings → Accounts → Manage Certificates), and `setup` run once.
 set -eu
@@ -38,25 +41,22 @@ PUBLISH="${2:-}"
 BUILD="$(git rev-list --count HEAD 2>/dev/null || date +%s)"
 DIST="dist"; rm -rf "$DIST"; mkdir -p "$DIST"
 
-# Release notes come from CHANGELOG.md: the "## $VERSION" section, up to the next "## ".
-# Markdown for the GitHub Release body; the same text as HTML inside the appcast for Sparkle's sheet.
-NOTES_MD="$(awk -v v="$VERSION" '/^## /{p=($2==v)} p&&!/^## /' CHANGELOG.md | sed -e '/./,$!d')"
-[ -n "$NOTES_MD" ] || { echo "CHANGELOG.md has no '## $VERSION' section. Write the notes first."; exit 1; }
-NOTES_HTML="$(printf '%s\n' "$NOTES_MD" | python3 -c '
-import sys, html
-out, inlist = [], False
-for line in sys.stdin.read().splitlines():
-    s = line.strip()
-    if s.startswith("- "):
-        if not inlist: out.append("<ul>"); inlist = True
-        out.append("  <li>" + html.escape(s[2:]) + "</li>")
-    else:
-        if inlist: out.append("</ul>"); inlist = False
-        if s: out.append("<p>" + html.escape(s) + "</p>")
-if inlist: out.append("</ul>")
-print("\n".join(out))
-')"
-printf '%s\n' "$NOTES_MD" > "$DIST/notes.md"
+NOTES_MD="docs/releases/$VERSION.md"
+[ -f "$NOTES_MD" ] || { echo "No release notes at $NOTES_MD — write them first (plain English, what changed for the user)."; exit 1; }
+# Markdown subset → HTML for the Sparkle dialog: '# ' / '## ' headings, '- ' bullets, blank-line paragraphs.
+md_to_html() {
+  awk '
+    function flush() { if (inp) { print "</p>"; inp = 0 } if (inl) { print "</ul>"; inl = 0 } }
+    function esc(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); return s }
+    /^## /  { flush(); print "<h3>" esc(substr($0, 4)) "</h3>"; next }
+    /^# /   { flush(); print "<h2>" esc(substr($0, 3)) "</h2>"; next }
+    /^- /   { if (inp) { print "</p>"; inp = 0 } if (!inl) { print "<ul>"; inl = 1 } print "<li>" esc(substr($0, 3)) "</li>"; next }
+    /^[[:space:]]*$/ { flush(); next }
+    { if (inl) { print "</ul>"; inl = 0 } if (!inp) { print "<p>"; inp = 1 } print esc($0) }
+    END { flush() }
+  ' "$1"
+}
+NOTES_HTML="$(md_to_html "$NOTES_MD")"
 
 sed -i '' "s/MARKETING_VERSION: \".*\"/MARKETING_VERSION: \"$VERSION\"/; s/CURRENT_PROJECT_VERSION: \".*\"/CURRENT_PROJECT_VERSION: \"$BUILD\"/" project.yml
 scripts/gen.sh
@@ -122,10 +122,10 @@ ITEM="$ITEM" perl -0pi -e 's|(<title>Spex Glance</title>\n)|$1$ENV{ITEM}\n|' app
 
 echo "Built $DMG"
 if [ "$PUBLISH" = "--publish" ]; then
-  git add project.yml appcast.xml CHANGELOG.md
+  git add project.yml appcast.xml "$NOTES_MD"
   git commit -m "Release $VERSION" || true
   git tag -a "v$VERSION" -m "Spex Glance $VERSION"
   git push && git push --tags
-  gh release create "v$VERSION" "$DMG" --title "Spex Glance $VERSION" --notes-file "$DIST/notes.md"
+  gh release create "v$VERSION" "$DMG" --title "Spex Glance $VERSION" --notes-file "$NOTES_MD"
   echo "Published. Sparkle clients see $VERSION on their next check (daily, or Check for Updates…)."
 fi

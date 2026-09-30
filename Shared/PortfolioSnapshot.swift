@@ -236,6 +236,14 @@ public struct PortfolioSnapshot: Codable, Equatable, Sendable {
     /// Positions held in non-sports markets (politics, econ, …). Not shown, just counted.
     public var hiddenNonSports: Int = 0
     public var errorMessage: String?
+    /// Tickers behind `hiddenNonSports`, so a live push for one of them isn't mistaken for a new bet.
+    /// Optional so a snapshot cached by an older build still decodes.
+    public var hiddenTickers: [String]? = nil
+    /// When a live push (price, fill, settlement) last changed this snapshot; nil until one does.
+    /// `fetchedAt` stays the time of the last full REST load.
+    public var liveUpdatedAt: Date? = nil
+    /// The most recent of the two, for "Updated …" labels.
+    public var updatedAt: Date { max(fetchedAt, liveUpdatedAt ?? .distantPast) }
 
     public var totalUnrealized: Double {
         bets.compactMap(\.unrealizedPnL).reduce(0, +)
@@ -258,6 +266,115 @@ public struct PortfolioSnapshot: Codable, Equatable, Sendable {
         }
         return changed
     }
+    /// What a pushed position change means for the snapshot.
+    public enum PositionChange: Equatable, Sendable {
+        /// A held market's size/cost/P&L changed in place.
+        case updated
+        /// The position went to zero (sold out or paid out) and was removed.
+        case closed
+        /// A market we don't hold — a brand-new position. Needs a full load for its metadata.
+        case unknown
+        /// Nothing we track changed.
+        case unchanged
+    }
+
+    /// Apply a `market_positions` push. Sign flips (YES→NO) are treated as unknown so the full
+    /// load rebuilds the side titles.
+    @discardableResult
+    public mutating func applyPosition(ticker: String, contracts signed: Double, costDollars: Double?,
+                                       realized: Double?, fees: Double?) -> PositionChange {
+        guard let i = bets.firstIndex(where: { $0.ticker == ticker }) else {
+            // A non-sports market we already skip: only a close-out matters (the hidden count moves).
+            if hiddenTickers?.contains(ticker) == true { return signed == 0 ? .unknown : .unchanged }
+            return signed == 0 ? .unchanged : .unknown
+        }
+        if signed == 0 {
+            bets.remove(at: i)
+            return .closed
+        }
+        let isYes = signed > 0
+        guard isYes == bets[i].isYes else { return .unknown }
+        let qty = abs(signed)
+        var changed = false
+        if qty != bets[i].contracts {
+            bets[i].contracts = qty
+            changed = true
+        }
+        if let cost = costDollars, qty > 0 {
+            let avg = cost / qty
+            if abs(avg - bets[i].avgCostDollars) > 0.00005 { bets[i].avgCostDollars = avg; changed = true }
+        }
+        if let r = realized, r != bets[i].realizedPnL { bets[i].realizedPnL = r; changed = true }
+        if let f = fees, f != bets[i].feesPaid { bets[i].feesPaid = f; changed = true }
+        return changed ? .updated : .unchanged
+    }
+
+    /// Apply a `user_orders` push. Returns true when the order is new to us (needs a full load
+    /// for its names); false when it was updated or removed in place.
+    @discardableResult
+    public mutating func applyOrder(id: String, ticker: String, status: String, isYes: Bool?, isBuy: Bool?,
+                                    yesPrice: Double?, remaining: Double?) -> Bool {
+        let gone = status != "resting" || (remaining ?? 1) <= 0
+        guard let i = orders.firstIndex(where: { $0.id == id }) else {
+            return !gone   // a new resting order; a dead one we never showed is nothing
+        }
+        if gone { orders.remove(at: i); return false }
+        if let r = remaining { orders[i].remaining = r }
+        if let y = isYes { orders[i].isYes = y }
+        if let b = isBuy { orders[i].isBuy = b }
+        if let p = yesPrice { orders[i].limitDollars = orders[i].isYes ? p : 1 - p }
+        return false
+    }
+
+    /// Apply a `market_lifecycle_v2` push for a market we hold, or a leg of a combo we hold.
+    /// Returns true if anything changed. "determined" carries the result before payout, which
+    /// is exactly when "Final · awaiting settlement" should become Won/Lost.
+    @discardableResult
+    public mutating func applyLifecycle(ticker: String, eventType: String, result: String?, closeTime: Date?) -> Bool {
+        var changed = false
+        for i in bets.indices {
+            if bets[i].ticker == ticker {
+                var betChanged = false
+                switch eventType {
+                case "determined", "settled":
+                    if let r = result, !r.isEmpty, r != bets[i].result { bets[i].result = r; betChanged = true }
+                    if bets[i].marketStatus != eventType { bets[i].marketStatus = eventType; betChanged = true }
+                case "close_date_updated":
+                    if let c = closeTime, c != bets[i].closeTime { bets[i].closeTime = c; betChanged = true }
+                case "deactivated":
+                    if bets[i].marketStatus != "inactive" { bets[i].marketStatus = "inactive"; betChanged = true }
+                case "activated":
+                    if bets[i].marketStatus != "active" { bets[i].marketStatus = "active"; betChanged = true }
+                default: break
+                }
+                if betChanged {
+                    if let p = bets[i].yesProbability { bets[i].currentDollars = bets[i].isYes ? p : 1 - p }
+                    changed = true
+                }
+            }
+            guard var legs = bets[i].legs, let j = legs.firstIndex(where: { $0.ticker == ticker }) else { continue }
+            var legChanged = false
+            switch eventType {
+            case "determined", "settled":
+                if let r = result, !r.isEmpty, r != legs[j].result { legs[j].result = r; legChanged = true }
+                if legs[j].marketStatus != eventType { legs[j].marketStatus = eventType; legChanged = true }
+            case "close_date_updated":
+                if let c = closeTime, c != legs[j].closeTime { legs[j].closeTime = c; legChanged = true }
+            case "deactivated":
+                if legs[j].marketStatus != "inactive" { legs[j].marketStatus = "inactive"; legChanged = true }
+            case "activated":
+                if legs[j].marketStatus != "active" { legs[j].marketStatus = "active"; legChanged = true }
+            default: break
+            }
+            if legChanged {
+                bets[i].legs = legs
+                if let p = bets[i].yesProbability { bets[i].currentDollars = bets[i].isYes ? p : 1 - p }
+                changed = true
+            }
+        }
+        return changed
+    }
+
     /// Current market value of every sports position (contracts × current price of your side).
     public var totalValue: Double {
         bets.compactMap { b in b.currentDollars.map { $0 * b.contracts } }.reduce(0, +)
@@ -548,6 +665,7 @@ public enum SnapshotBuilder {
 
         var bets: [OpenBet] = []
         var hidden = 0
+        var hiddenTickers: [String] = []
         for p in positions {
             let qty = p.contractsSigned
             let contracts = abs(qty)
@@ -559,7 +677,7 @@ public enum SnapshotBuilder {
 
             let combo = comboLegs(m)
             if let legs = combo.legs {
-                guard combo.allSports else { hidden += 1; continue }
+                guard combo.allSports else { hidden += 1; hiddenTickers.append(p.ticker); continue }
                 let sports = Set(legs.compactMap(\.sport))
                 var bet = OpenBet(
                     ticker: p.ticker, eventTicker: m?.event_ticker,
@@ -579,7 +697,7 @@ public enum SnapshotBuilder {
                 bets.append(bet)
                 continue
             }
-            guard sm?.isSports == true else { hidden += 1; continue }
+            guard sm?.isSports == true else { hidden += 1; hiddenTickers.append(p.ticker); continue }
 
             let (yesName, noName) = sideNames(m, eventTitle: evTitle)
             let winner = EventTitleParser.isWinnerSeries(seriesTicker(for: m))
@@ -634,7 +752,8 @@ public enum SnapshotBuilder {
             environment: client.credential.environment, fetchedAt: Date(),
             balanceDollars: balance.balanceDollars,
             portfolioValueDollars: balance.portfolioValueDollars,
-            bets: bets, orders: openOrders, hiddenNonSports: hidden, errorMessage: nil)
+            bets: bets, orders: openOrders, hiddenNonSports: hidden, errorMessage: nil,
+            hiddenTickers: hiddenTickers)
     }
 }
 

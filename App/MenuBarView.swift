@@ -120,7 +120,12 @@ struct MenuBarView: View {
     private var liveDot: some View {
         let (color, text): (Color, String) = {
             switch model.liveState {
-            case .live: return (.green, model.lastTickAt.map { "live · " + Fmt.relative($0) } ?? "live")
+            case .live:
+                // Amber once Kalshi's own timestamps say we're more than 15s behind.
+                if let lag = model.feedLag, lag > 15, let t = model.lastTickAt, Date().timeIntervalSince(t) < 120 {
+                    return (.orange, "live · \(Int(lag))s behind")
+                }
+                return (.green, model.lastTickAt.map { "live · " + Fmt.relative($0) } ?? "live")
             case .connecting: return (.yellow, "connecting")
             case .backoff(let s): return (.orange, "retry in \(s)s")
             case .failed(let m): return (.red, "socket: \(m)")

@@ -1,7 +1,8 @@
 import Foundation
 
-/// Kalshi is mid-migration from integer cents to fixed-point dollar strings, and
-/// some fields show up as either. `Flex` swallows string / int / double.
+/// Kalshi sends money and contract counts as fixed-point strings ("0.6300", "12.00") and a
+/// few older fields as integers. `Flex` swallows string / int / double so a type change on
+/// their side degrades one field instead of failing the whole decode.
 public struct Flex: Codable, Equatable, Sendable {
     public var value: Double?
 
@@ -21,8 +22,8 @@ public struct Flex: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - Wire types (fields we use plus the legacy/new pairs Kalshi is migrating between;
-// everything optional so a schema change degrades a field, not the whole decode)
+// MARK: - Wire types (only the fields we use; everything optional so a schema change
+// degrades a field, not the whole decode). Field names verified against docs.kalshi.com, Oct 2026.
 
 /// GET /api_keys — every key on the account with its scopes. Used to verify the key handed to
 /// Spex Glance is read-only before we accept it, and again on launch.
@@ -61,37 +62,34 @@ public struct ApiKeyInfo: Codable, Sendable {
 }
 
 public struct BalanceResponse: Codable, Sendable {
-    /// Legacy integer cents.
+    /// Kalshi still returns both: `balance` in integer cents and `balance_dollars` as the exact
+    /// fixed-point string (direct-member balances can carry sub-cent amounts). Prefer the string.
     public var balance: Flex?
     public var balance_dollars: Flex?
+    /// Integer cents; Kalshi has no dollar-string twin for this one.
     public var portfolio_value: Flex?
-    public var portfolio_value_dollars: Flex?
 
     public var balanceDollars: Double? {
         balance_dollars?.value ?? balance?.value.map { $0 / 100 }
     }
     public var portfolioValueDollars: Double? {
-        portfolio_value_dollars?.value ?? portfolio_value?.value.map { $0 / 100 }
+        portfolio_value?.value.map { $0 / 100 }
     }
 }
 
 public struct MarketPosition: Codable, Sendable {
     public var ticker: String
-    /// Positive = YES contracts, negative = NO contracts (fixed-point string).
+    /// Positive = YES contracts, negative = NO contracts (fixed-point string, 2 decimals).
     public var position_fp: Flex?
-    /// Legacy integer form of the same.
-    public var position: Flex?
+    /// What the position cost in total (fixed-point dollars).
     public var market_exposure_dollars: Flex?
-    public var market_exposure: Flex?          // legacy cents
     public var realized_pnl_dollars: Flex?
-    public var realized_pnl: Flex?             // legacy cents
     public var fees_paid_dollars: Flex?
-    public var fees_paid: Flex?                // legacy cents
 
-    public var contractsSigned: Double { position_fp?.value ?? position?.value ?? 0 }
-    public var exposureDollars: Double { market_exposure_dollars?.value ?? market_exposure?.value.map { $0 / 100 } ?? 0 }
-    public var realizedDollars: Double? { realized_pnl_dollars?.value ?? realized_pnl?.value.map { $0 / 100 } }
-    public var feesDollars: Double? { fees_paid_dollars?.value ?? fees_paid?.value.map { $0 / 100 } }
+    public var contractsSigned: Double { position_fp?.value ?? 0 }
+    public var exposureDollars: Double { market_exposure_dollars?.value ?? 0 }
+    public var realizedDollars: Double? { realized_pnl_dollars?.value }
+    public var feesDollars: Double? { fees_paid_dollars?.value }
 }
 
 public struct PositionsResponse: Codable, Sendable {
@@ -103,18 +101,15 @@ public struct Order: Codable, Sendable {
     public var order_id: String?
     public var ticker: String
     public var status: String?
-    /// Legacy direction fields.
-    public var side: String?          // "yes" | "no"
-    public var action: String?        // "buy" | "sell"
-    /// Newer direction fields.
+    /// Canonical direction: the outcome you profit from, and the same bit in book vocabulary.
     public var outcome_side: String?  // "yes" | "no"
     public var book_side: String?     // "bid" | "ask"
+    /// Deprecated by Kalshi (May 2026) but still sent; read only when the canonical pair is absent.
+    public var side: String?          // "yes" | "no"
+    public var action: String?        // "buy" | "sell"
     public var yes_price_dollars: Flex?
     public var no_price_dollars: Flex?
-    public var yes_price: Flex?       // legacy cents
-    public var no_price: Flex?
     public var remaining_count_fp: Flex?
-    public var remaining_count: Flex?
 
     public var isYes: Bool { (outcome_side ?? side ?? "yes").lowercased() == "yes" }
     public var isBuy: Bool {
@@ -122,16 +117,10 @@ public struct Order: Codable, Sendable {
         return (action ?? "buy").lowercased() == "buy"
     }
     /// Contracts still resting. 0 when Kalshi omits the field rather than guessing from the initial size.
-    public var remaining: Double {
-        remaining_count_fp?.value ?? remaining_count?.value ?? 0
-    }
+    public var remaining: Double { remaining_count_fp?.value ?? 0 }
     /// Limit price for the side of the order, in dollars.
     public var priceDollars: Double? {
-        if isYes {
-            return yes_price_dollars?.value ?? yes_price?.value.map { $0 / 100 }
-        } else {
-            return no_price_dollars?.value ?? no_price?.value.map { $0 / 100 }
-        }
+        isYes ? yes_price_dollars?.value : no_price_dollars?.value
     }
 }
 
@@ -143,7 +132,7 @@ public struct OrdersResponse: Codable, Sendable {
 public struct Market: Codable, Sendable {
     public var ticker: String
     public var event_ticker: String?
-    public var title: String?          // deprecated upstream but often present
+    public var title: String?          // deprecated by Kalshi; still sent, used only as a last-resort name
     public var yes_sub_title: String?
     public var no_sub_title: String?
     public var status: String?

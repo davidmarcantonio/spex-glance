@@ -23,13 +23,13 @@ struct OpenBetsProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<OpenBetsEntry>) -> Void) {
         Task {
             let connected = KeychainStore.load() != nil
-            // The app reloads timelines right after its own refresh; reuse a snapshot that's
-            // under two minutes old instead of hitting Kalshi again from the extension.
+            // The app reloads timelines after its own refresh and after live pushes; reuse a
+            // snapshot that's under two minutes old instead of hitting Kalshi again from the extension.
             let snap: PortfolioSnapshot?
             if !connected {
                 snap = nil
             } else if let cached = SnapshotCache.load(), cached.errorMessage == nil,
-                      Date().timeIntervalSince(cached.fetchedAt) < 120 {
+                      Date().timeIntervalSince(cached.updatedAt) < 120 {
                 snap = cached
             } else {
                 snap = await Refresher.refresh()

@@ -53,7 +53,7 @@ private struct Header: View {
                 Image(systemName: "exclamationmark.triangle.fill").font(.caption2).foregroundStyle(.orange)
             }
             if !compact {
-                Text(snap.fetchedAt, style: .time).font(.caption2).foregroundStyle(.tertiary)
+                Text(snap.updatedAt, style: .time).font(.caption2).foregroundStyle(.tertiary)
             }
         }
     }

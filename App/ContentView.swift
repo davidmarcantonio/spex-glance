@@ -170,12 +170,17 @@ struct ContentView: View {
                     Label(w, systemImage: "lock.open.trianglebadge.exclamationmark")
                         .font(.footnote).foregroundStyle(.orange)
                 }
-                if let t = snap?.fetchedAt {
+                if let t = snap?.updatedAt {
                     HStack(spacing: 6) {
                         Text("Updated \(Fmt.relative(t))")
                         if case .live = model.liveState {
-                            Circle().fill(.green).frame(width: 6, height: 6)
-                            Text("live prices")
+                            if let lag = model.feedLag, lag > 15, let tk = model.lastTickAt, Date().timeIntervalSince(tk) < 120 {
+                                Circle().fill(.orange).frame(width: 6, height: 6)
+                                Text("live · \(Int(lag))s behind")
+                            } else {
+                                Circle().fill(.green).frame(width: 6, height: 6)
+                                Text("live")
+                            }
                         }
                     }
                     .font(.footnote).foregroundStyle(.tertiary)

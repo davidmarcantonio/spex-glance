@@ -71,6 +71,9 @@ final class AppModel: ObservableObject {
     @Published var showWizard = false
     @Published var liveState: LiveTicker.State = .idle
     @Published var lastTickAt: Date?
+    /// Seconds between Kalshi stamping the last message and it reaching us. Nil until a stamped
+    /// message arrives; a few seconds is normal, tens of seconds means we're falling behind.
+    @Published var feedLag: TimeInterval?
     /// Group ids (game keys / combo tickers) currently expanded in the positions list.
     @Published var expandedGroups: Set<String> = []
     /// Set when the connected key turns out to have write scopes (checked once per launch).
@@ -104,20 +107,43 @@ final class AppModel: ObservableObject {
         return Fmt.dollars(s.totalUnrealized, signed: true).replacingOccurrences(of: "$", with: "")
     }
 
+    /// Pending full reload triggered by a push we can't apply in place (new position, new order).
+    private var reloadTask: Task<Void, Never>?
+    /// Last time a live change was written to the widget cache; ticks are throttled, structure isn't.
+    private var lastCacheWrite: Date = .distantPast
+
     init() {
-        ticker.onTick = { [weak self] t, bid, ask, last in self?.applyTick(t, bid, ask, last) }
-        ticker.onState = { [weak self] s in self?.liveState = s }
-        // Positions change without a tick (fills, settlements): poll every 5 min while the app runs.
+        ticker.onTick = { [weak self] t, bid, ask, last, at in self?.applyTick(t, bid, ask, last, serverTime: at) }
+        ticker.onPosition = { [weak self] p in self?.applyPosition(p) }
+        ticker.onOrder = { [weak self] o in self?.applyOrder(o) }
+        ticker.onLifecycle = { [weak self] l in self?.applyLifecycle(l) }
+        ticker.onState = { [weak self] s in
+            self?.liveState = s
+            // A lag figure from before a drop or a quiet spell means nothing once we're back.
+            if s != .live { self?.feedLag = nil }
+        }
+        // Fills, sells, settlements and new orders arrive over the socket; the 5-minute poll is
+        // reconciliation, so a missed message or a dropped socket can't leave stale numbers up.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh() }
         }
     }
 
+    /// Set by a live push that a running REST load may not reflect yet; makes the loader go
+    /// around once more so a fill that lands mid-fetch isn't overwritten by older REST data.
+    private var reloadPending = false
+
     /// Coalesces overlapping calls: a refresh already in flight is awaited, not duplicated.
+    /// The in-flight loader repeats while pushes keep arriving underneath it.
     func refresh() async {
         guard isConnected else { return }
         if let t = inFlight { await t.value; return }
-        let task = Task { await self.performRefresh() }
+        let task = Task {
+            repeat {
+                self.reloadPending = false
+                await self.performRefresh()
+            } while self.reloadPending && self.isConnected
+        }
         inFlight = task
         await task.value
         inFlight = nil
@@ -164,13 +190,83 @@ final class AppModel: ObservableObject {
         if tickers.isEmpty { ticker.stop() } else { ticker.start(credential: cred, tickers: tickers) }
     }
 
-    private func applyTick(_ t: String, _ bid: Double?, _ ask: Double?, _ last: Double?) {
+    private func applyTick(_ t: String, _ bid: Double?, _ ask: Double?, _ last: Double?, serverTime: Date?) {
+        let now = Date()
+        if let at = serverTime { feedLag = max(0, now.timeIntervalSince(at)) }
         guard var s = snapshot else { return }
         if s.applyTick(ticker: t, yesBid: bid, yesAsk: ask, last: last) {
+            s.liveUpdatedAt = now
             snapshot = s
-            let now = Date()
             tickTimes[t] = now
             lastTickAt = now
+            // Prices move constantly; give the widget a fresh copy at most once a minute.
+            if now.timeIntervalSince(lastCacheWrite) > 60 { persistLive(s) }
+        }
+    }
+
+    private func applyPosition(_ p: LivePosition) {
+        guard var s = snapshot else { return }
+        switch s.applyPosition(ticker: p.ticker, contracts: p.contracts, costDollars: p.costDollars,
+                               realized: p.realizedDollars, fees: p.feesDollars) {
+        case .updated:
+            // Size or cost moved (a fill): show it now, then let REST bring the new cash balance.
+            s.liveUpdatedAt = Date()
+            snapshot = s
+            persistLive(s)
+            scheduleReload()
+        case .closed:
+            // Sold out or paid out: drop it now, then reload for the new cash balance and to
+            // stop streaming a market we no longer hold.
+            s.liveUpdatedAt = Date()
+            snapshot = s
+            persistLive(s)
+            scheduleReload()
+        case .unknown:
+            // A market we haven't seen (new buy, or a side flip): needs names, sport and legs.
+            scheduleReload()
+        case .unchanged:
+            break
+        }
+    }
+
+    private func applyOrder(_ o: LiveOrder) {
+        guard var s = snapshot else { return }
+        let isNew = s.applyOrder(id: o.orderID, ticker: o.ticker, status: o.status, isYes: o.isYes, isBuy: o.isBuy,
+                                 yesPrice: o.yesPriceDollars, remaining: o.remaining)
+        s.liveUpdatedAt = Date()
+        snapshot = s
+        persistLive(s)
+        if isNew { scheduleReload() } else if inFlight != nil { reloadPending = true }
+    }
+
+    private func applyLifecycle(_ l: LiveLifecycle) {
+        guard var s = snapshot else { return }
+        if s.applyLifecycle(ticker: l.ticker, eventType: l.eventType, result: l.result, closeTime: l.closeTime) {
+            s.liveUpdatedAt = Date()
+            snapshot = s
+            persistLive(s)
+            if inFlight != nil { reloadPending = true }
+        }
+        // Payout changes cash; settled markets leave the positions list. Let REST catch up.
+        if l.eventType == "settled" { scheduleReload() }
+    }
+
+    /// Write the live snapshot where the widget reads it and nudge WidgetKit.
+    private func persistLive(_ s: PortfolioSnapshot) {
+        lastCacheWrite = Date()
+        SnapshotCache.save(s)
+        WidgetCenter.shared.reloadTimelines(ofKind: SharedIDs.widgetKind)
+    }
+
+    /// Full REST reload, coalesced: a burst of pushes (a multi-fill order, a settlement wave)
+    /// becomes one request a couple of seconds after the last one.
+    private func scheduleReload() {
+        reloadPending = true
+        reloadTask?.cancel()
+        reloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            await self?.refresh()
         }
     }
 
@@ -187,11 +283,14 @@ final class AppModel: ObservableObject {
 
     func disconnect() {
         ticker.stop()
+        reloadTask?.cancel()
         KeychainStore.delete()
         SnapshotCache.clear()
         credential = nil
         snapshot = nil
         tickTimes = [:]
+        feedLag = nil
+        lastTickAt = nil
         WidgetCenter.shared.reloadTimelines(ofKind: SharedIDs.widgetKind)
     }
 }
