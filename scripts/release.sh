@@ -131,5 +131,18 @@ if [ "$PUBLISH" = "--publish" ]; then
   gh api repos/davidmarcantonio/spex.bet/dispatches -f event_type=release \
     && echo "spex.bet redeploy requested." \
     || echo "WARN: could not ping spex.bet (site updates on its daily run instead)."
+  # Homebrew: bump the cask in spexbet/homebrew-tap so `brew install --cask spex-glance` gets this version.
+  TAP_DIR="$(mktemp -d)"
+  if git clone -q --depth 1 https://github.com/spexbet/homebrew-tap.git "$TAP_DIR"; then
+    SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+    sed -i '' -e "s/^  version \".*\"/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"/  sha256 \"$SHA\"/" "$TAP_DIR/Casks/spex-glance.rb"
+    git -C "$TAP_DIR" commit -qam "spex-glance $VERSION" \
+      && git -C "$TAP_DIR" push -q \
+      && echo "Homebrew tap updated: spex-glance $VERSION." \
+      || echo "WARN: Homebrew tap not updated; bump Casks/spex-glance.rb in spexbet/homebrew-tap by hand."
+  else
+    echo "WARN: could not clone spexbet/homebrew-tap; bump the cask by hand."
+  fi
+  rm -rf "$TAP_DIR"
   echo "Published. Sparkle clients see $VERSION on their next check (daily, or Check for Updates…)."
 fi

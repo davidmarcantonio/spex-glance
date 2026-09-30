@@ -72,7 +72,14 @@ launch. The app is notarized. It checks GitHub once a day for updates (Settings 
 Spex Glance → Check for Updates…); each update is verified with an EdDSA key built into the app,
 so a hijacked download link cannot hand you a bad build.
 
-Homebrew: `brew install --cask spex-glance` once the cask is accepted.
+Or with Homebrew:
+
+```sh
+brew tap spexbet/tap
+brew install --cask spex-glance
+```
+
+`brew uninstall --zap --cask spex-glance` removes the app and its settings (the Kalshi key stays in your login keychain).
 
 ## Connect Kalshi (the wizard)
 
