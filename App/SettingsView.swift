@@ -152,7 +152,18 @@ struct SettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
                 Button {
                     Browser.open(URL(string: "https://github.com/davidmarcantonio/spex-glance")!)
-                } label: { Label("Source & issues on GitHub", systemImage: "chevron.left.forwardslash.chevron.right") }
+                } label: { Label("Source on GitHub", systemImage: "chevron.left.forwardslash.chevron.right") }
+                Button {
+                    // Support is a GitHub issue. Pre-fill the environment so the report is useful on arrival.
+                    let app = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+                    let os = ProcessInfo.processInfo.operatingSystemVersionString
+                    let body = "**Spex Glance** \(app) · **macOS** \(os)\n\n**What happened**\n\n\n**What you expected**\n\n"
+                    var c = URLComponents(string: "https://github.com/davidmarcantonio/spex-glance/issues/new")!
+                    c.queryItems = [URLQueryItem(name: "body", value: body)]
+                    Browser.open(c.url!)
+                } label: { Label("Report a problem or ask a question", systemImage: "questionmark.bubble") }
+                Text("Support is handled through GitHub issues. Please include what you saw and what you expected; your app and macOS versions are filled in for you.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Button {
                     if let url = Bundle.main.url(forResource: "Acknowledgements", withExtension: "txt") { NSWorkspace.shared.open(url) }
                 } label: { Label("Third-party licenses", systemImage: "doc.text") }
