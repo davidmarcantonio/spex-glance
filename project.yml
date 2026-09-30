@@ -67,6 +67,9 @@ targets:
         SUEnableInstallerLauncherService: true
         SUEnableDownloaderService: true
         SUAutomaticallyUpdate: false
+        # Check daily by default without Sparkle's first-launch "check automatically?" prompt.
+        # The Settings toggle still lets a user turn it off.
+        SUEnableAutomaticChecks: true
         SUScheduledCheckInterval: 86400
     settings:
       base:
