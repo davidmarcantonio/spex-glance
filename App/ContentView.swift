@@ -20,6 +20,7 @@ struct ContentView: View {
     @EnvironmentObject var model: AppModel
     @AppStorage(Prefs.sportFilterKey, store: Prefs.defaults) private var sportFilter = ""
     @AppStorage(Prefs.sortKey, store: Prefs.defaults) private var sort: Prefs.GroupSort = .liveFirst
+    @AppStorage(Prefs.workModeKey, store: Prefs.defaults) private var workMode = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,9 +107,8 @@ struct ContentView: View {
             // Fixed header: brand, money strip, P&L line, filter row — each block separated by an
             // edge-to-edge rule. Only the positions scroll.
             VStack(spacing: 10) {
+                // No wordmark in the window any more; the row only carries the refresh control.
                 ZStack {
-                    Text("Spex Glance").font(Theme.display(34, weight: .medium))
-                        .accessibilityAddTraits(.isHeader)
                     HStack {
                         Spacer()
                         Button {
@@ -125,10 +125,13 @@ struct ContentView: View {
                         .padding(.trailing, 4)
                     }
                 }
-                HStack(alignment: .top, spacing: 12) {
-                    StatTile(title: "Cash", value: Fmt.dollars(snap?.balanceDollars))
-                    StatTile(title: "Positions", value: Fmt.dollars(snap?.totalValue), sub: "pays up to \(Fmt.dollars(snap?.totalMaxPayout))")
-                    StatTile(title: "Total", value: Fmt.dollars(snap?.sportsTotal), sub: "cash + positions")
+                // Work Mode (⌘M): no money tiles, just the positions.
+                if !workMode {
+                    HStack(alignment: .top, spacing: 12) {
+                        StatTile(title: "Cash", value: Fmt.dollars(snap?.balanceDollars))
+                        StatTile(title: "Positions", value: Fmt.dollars(snap?.totalValue), sub: "pays up to \(Fmt.dollars(snap?.totalMaxPayout))")
+                        StatTile(title: "Total", value: Fmt.dollars(snap?.sportsTotal), sub: "cash + positions")
+                    }
                 }
             }
             .padding(.top, 2)
@@ -138,6 +141,7 @@ struct ContentView: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 4) {
+                if !workMode {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Unrealized").font(.caption).foregroundStyle(.secondary)
@@ -156,6 +160,7 @@ struct ContentView: View {
                                 .font(.caption).foregroundStyle(.tertiary)
                         }
                     }
+                }
                 }
                 if let err = snap?.errorMessage {
                     Label(err, systemImage: "exclamationmark.triangle")
@@ -249,6 +254,7 @@ struct ContentView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.paper)
 
+        if !workMode {
         Divider()
         HStack {
             Button {
@@ -261,6 +267,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
+        }
         }
         .background(Theme.paper)
     }

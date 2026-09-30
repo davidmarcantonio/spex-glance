@@ -28,6 +28,11 @@ struct SpexGlanceApp: App {
                     .keyboardShortcut("e", modifiers: .command)
                 Button("Refresh") { Task { await model.refresh() } }
                     .keyboardShortcut("r", modifiers: .command)
+                Divider()
+                // ⌘M: same switch as Settings → Menu bar → Work Mode. Hides the menu bar icon,
+                // the "$" sign, the money tiles and the bottom buttons; leaves the positions.
+                Toggle("Work Mode", isOn: $workMode)
+                    .keyboardShortcut("m", modifiers: .command)
             }
         }
 
