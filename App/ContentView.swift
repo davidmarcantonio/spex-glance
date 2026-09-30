@@ -185,10 +185,10 @@ struct ContentView: View {
                         if case .live = model.liveState {
                             if let lag = model.feedLag, lag > 15, let tk = model.lastTickAt, Date().timeIntervalSince(tk) < 120 {
                                 Circle().fill(.orange).frame(width: 6, height: 6)
-                                Text("live · \(Int(lag))s behind")
+                                Text("Live · \(Int(lag))s behind")
                             } else {
                                 Circle().fill(.green).frame(width: 6, height: 6)
-                                Text("live")
+                                Text("Live")
                             }
                         }
                         // Kalshi's own health, always on: green means the status check is running
@@ -196,7 +196,7 @@ struct ContentView: View {
                         Circle()
                             .fill(model.health.tint.map { Color(nsColor: $0) } ?? .green)
                             .frame(width: 6, height: 6)
-                        Text(model.health.badge.map { "Kalshi \($0)" } ?? "Kalshi")
+                        Text(model.health.badge.map { "Kalshi Health · \($0)" } ?? "Kalshi Health")
                             .help(model.health.summary)
                     }
                     .font(.footnote).foregroundStyle(.tertiary)
