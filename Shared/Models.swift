@@ -198,3 +198,33 @@ public struct KalshiErrorBody: Codable, Sendable {
     public var message: String?
     public var details: String?
 }
+
+// MARK: - Exchange status (public endpoints, no key needed)
+
+/// GET /exchange/status — whether Kalshi is taking state changes and permitting trades,
+/// overall and per exchange shard.
+public struct ExchangeStatusResponse: Codable, Sendable {
+    public var exchange_active: Bool
+    public var trading_active: Bool
+    /// ISO 8601; set during maintenance, "not guaranteed and can be extended".
+    public var exchange_estimated_resume_time: String?
+    public var exchange_index_statuses: [ExchangeIndexStatus]?
+}
+public struct ExchangeIndexStatus: Codable, Sendable {
+    public var exchange_index: Int
+    public var description: String?
+    public var exchange_active: Bool
+    public var trading_active: Bool
+}
+
+/// GET /exchange/schedule — only the maintenance windows are used.
+public struct ExchangeScheduleResponse: Codable, Sendable {
+    public var schedule: ExchangeSchedule?
+}
+public struct ExchangeSchedule: Codable, Sendable {
+    public var maintenance_windows: [MaintenanceWindow]?
+}
+public struct MaintenanceWindow: Codable, Sendable {
+    public var start_datetime: String
+    public var end_datetime: String
+}

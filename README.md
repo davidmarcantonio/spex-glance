@@ -118,6 +118,27 @@ behind, the live dot turns amber and says how far. If the socket drops it retrie
 backoff, and the 5-minute REST poll reconciles in the meantime, so a missed message can
 never leave stale numbers up for long.
 
+## When Kalshi has a bad day
+
+Kalshi runs no official status page. Instead of scraping a third-party one, the app asks
+Kalshi directly: `GET /exchange/status` (public, no key) once a minute and right after any
+failed refresh, plus its own view of things (failed refreshes, socket drops, feed lag).
+The verdict tints the menu bar:
+
+- Ember icon and text, "slow": something is impaired but data still flows — trading paused,
+  a shard paused, two refreshes in a row failed, the socket stuck in retry, or the status
+  check itself failing.
+- Red, "down": the exchange is halted, or three refreshes in a row have failed, or the status
+  check and the data paths are both failing.
+- Gray, "maint": Kalshi reports a maintenance window or gave an estimated resume time.
+
+Everything is counted in consecutive failures, so one dropped packet never tints the bar,
+and 401/403/429 (your key, not their exchange) never count.
+
+The dropdown and the main window show the reason and since when, and a *Status page*
+button opens kalshistatus.com in your browser — an unofficial community page, opened only
+when you click it. The app itself still talks to nobody but Kalshi.
+
 ## How refresh works
 
 - Widget: WidgetKit decides when it updates; the app asks for every ~15 minutes and

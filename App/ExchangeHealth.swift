@@ -1,0 +1,235 @@
+import Foundation
+import AppKit
+
+/// How Kalshi looks from this Mac right now. Judged from Kalshi's own `GET /exchange/status`
+/// plus what the app already sees: REST failures, socket drops, feed lag. No third-party
+/// status site is consulted — the app still talks to nobody but Kalshi.
+enum ExchangeHealth: Equatable {
+    case ok
+    /// Something is off but data is still flowing (a shard paused, trading halted, socket
+    /// retrying, one failed refresh). The dot and icon go ember.
+    case degraded(String)
+    /// The exchange is halted or the API can't be reached. Red.
+    case down(String)
+    /// Kalshi says it's maintenance (scheduled window, or a resume time was given). Gray.
+    case maintenance(until: Date?)
+
+    var isOK: Bool { self == .ok }
+    /// One line for the menu bar dropdown and the window banner.
+    var summary: String {
+        switch self {
+        case .ok: return "Kalshi is up"
+        case .degraded(let why): return "Kalshi degraded: \(why)"
+        case .down(let why): return "Kalshi down: \(why)"
+        case .maintenance(let until):
+            if let u = until { return "Kalshi maintenance until \(Fmt.gameTime(u))" }
+            return "Kalshi maintenance"
+        }
+    }
+    /// Tint for the icon, the P&L text and the dot. Nil = normal menu bar colors.
+    var tint: NSColor? {
+        switch self {
+        case .ok: return nil
+        case .degraded: return NSColor(red: 1.0, green: 0.54, blue: 0.24, alpha: 1)   // ember #FF8A3D
+        case .down: return .systemRed
+        case .maintenance: return .systemGray
+        }
+    }
+    /// Short word for the bar when there is no P&L to show, or in Work Mode.
+    var badge: String? {
+        switch self {
+        case .ok: return nil
+        case .degraded: return "slow"
+        case .down: return "down"
+        case .maintenance: return "maint"
+        }
+    }
+}
+
+/// Polls `GET /exchange/status` once a minute (public, unauthenticated) and folds in the
+/// app's own observations to produce one `ExchangeHealth`. Everything is a plain value;
+/// `AppModel` owns the instance and republishes `health`.
+@MainActor
+final class ExchangeHealthMonitor {
+    private(set) var health: ExchangeHealth = .ok { didSet { if health != oldValue { onChange?(health) } } }
+    var onChange: ((ExchangeHealth) -> Void)?
+
+    // Observations fed in by AppModel. Everything is counted in consecutive failures so a
+    // single Wi-Fi blip, one slow response, or one socket drop never tints the bar.
+    private var refreshFailures = 0
+    private var lastRefreshError: String?
+    private var socketState: LiveTicker.State = .idle
+
+    // Last word from Kalshi.
+    private var status: ExchangeStatusResponse?
+    private var statusFailures = 0
+    private var lastStatusError: String?
+    private var maintenanceWindows: [(Date, Date)] = []
+    private var lastScheduleFetch: Date = .distantPast
+
+    private var timer: Timer?
+    private var environment: KalshiEnvironment = .prod
+    /// Bumped by start/stop so a poll still in flight can't write a verdict after stop().
+    private var generation = 0
+
+    func start(environment: KalshiEnvironment) {
+        self.environment = environment
+        generation += 1
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in await self?.poll() }
+        }
+        Task { await poll() }
+    }
+
+    func stop() {
+        generation += 1
+        timer?.invalidate()
+        timer = nil
+        status = nil
+        statusFailures = 0
+        refreshFailures = 0
+        health = .ok
+    }
+
+    // MARK: Inputs
+
+    /// Outcome of a full REST refresh. Auth and rate-limit errors are the key's problem, not
+    /// Kalshi's, so they don't count against the exchange.
+    func refreshFinished(error: String?) {
+        if let e = error, !e.contains("(401)"), !e.contains("(403)"), !e.contains("(429)") {
+            refreshFailures += 1
+            lastRefreshError = e
+            // A failed refresh is the moment to ask Kalshi what's going on, not a minute later.
+            Task { await poll() }
+        } else {
+            refreshFailures = 0
+            lastRefreshError = nil
+            recompute()
+        }
+    }
+
+    func socketChanged(_ s: LiveTicker.State) {
+        socketState = s
+        recompute()
+    }
+
+    // MARK: Polling
+
+    func poll() async {
+        let gen = generation
+        let client = PublicKalshiClient(environment: environment)
+        do {
+            let st = try await client.exchangeStatus()
+            guard gen == generation else { return }
+            status = st
+            statusFailures = 0
+            lastStatusError = nil
+        } catch {
+            guard gen == generation else { return }
+            status = nil
+            statusFailures += 1
+            lastStatusError = error.localizedDescription
+        }
+        // Maintenance windows change rarely: fetch hourly, and only once something looks off.
+        // The stamp is set on failure too, so a struggling API isn't hit twice a minute.
+        if Date().timeIntervalSince(lastScheduleFetch) > 3600,
+           status?.exchange_active == false || statusFailures > 0 || maintenanceWindows.isEmpty {
+            lastScheduleFetch = Date()
+            if let sched = try? await client.exchangeSchedule() {
+                guard gen == generation else { return }
+                maintenanceWindows = (sched.schedule?.maintenance_windows ?? []).compactMap { w in
+                    guard let s = Self.date(w.start_datetime), let e = Self.date(w.end_datetime) else { return nil }
+                    return (s, e)
+                }
+            }
+        }
+        guard gen == generation else { return }
+        recompute()
+    }
+
+    private static let iso = ISO8601DateFormatter()
+    private static let isoFrac: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f
+    }()
+    private static func date(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        return iso.date(from: s) ?? isoFrac.date(from: s)
+    }
+
+    // MARK: Verdict
+
+    private func recompute() {
+        let now = Date()
+        let inMaintenance = maintenanceWindows.first { $0.0 <= now && now <= $0.1 }
+
+        // 1. Kalshi says the exchange is stopped.
+        if let st = status, !st.exchange_active {
+            if let w = inMaintenance { health = .maintenance(until: w.1); return }
+            if let r = Self.date(st.exchange_estimated_resume_time) { health = .maintenance(until: r); return }
+            health = .down("exchange halted")
+            return
+        }
+
+        // 2. Can't reach Kalshi. During a published maintenance window that's expected.
+        let socketStruggling: Bool = {
+            // The first retries (2 s, 4 s) are routine; ember only once it's clearly not coming back.
+            if case .backoff(let d) = socketState { return d >= 8 }
+            return false
+        }()
+        if statusFailures >= 2 {
+            if let w = inMaintenance { health = .maintenance(until: w.1); return }
+            if refreshFailures >= 2 || socketStruggling {
+                health = .down(shortError(lastStatusError ?? "")); return
+            }
+            health = .degraded("status check failing"); return
+        }
+
+        // 3. Exchange up, but something is impaired.
+        if let st = status {
+            if !st.trading_active { health = .degraded("trading paused"); return }
+            if let shard = (st.exchange_index_statuses ?? []).first(where: { !$0.exchange_active || !$0.trading_active }) {
+                let name = (shard.description?.isEmpty == false) ? shard.description! : "shard \(shard.exchange_index)"
+                health = .degraded("\(name) paused"); return
+            }
+        }
+        if refreshFailures >= 3 { health = .down(shortError(lastRefreshError ?? "")); return }
+        if refreshFailures == 2 { health = .degraded("refresh failing"); return }
+        if socketStruggling { health = .degraded("socket reconnecting"); return }
+        // A rejected price subscription (.failed) is usually a settled ticker, not an outage; the
+        // live dot already reports it. Feed lag is likewise shown by the dot and can be a fast
+        // clock, so neither one changes the verdict.
+        health = .ok
+    }
+
+    private func shortError(_ s: String) -> String {
+        // "Kalshi returned 503: ..." → "HTTP 503"; "Network error: The request timed out." → "timed out"
+        if let r = s.range(of: #"\b5\d\d\b"#, options: .regularExpression) { return "HTTP \(s[r])" }
+        if s.localizedCaseInsensitiveContains("timed out") { return "timed out" }
+        if s.localizedCaseInsensitiveContains("offline") || s.localizedCaseInsensitiveContains("internet") { return "no network" }
+        return "API unreachable"
+    }
+}
+
+/// Unauthenticated calls: exchange status and schedule need no key, so they work even when
+/// the authenticated paths are the thing that's broken.
+struct PublicKalshiClient {
+    let environment: KalshiEnvironment
+
+    func exchangeStatus() async throws -> ExchangeStatusResponse { try await get("/exchange/status") }
+    func exchangeSchedule() async throws -> ExchangeScheduleResponse { try await get("/exchange/schedule") }
+
+    private func get<T: Decodable>(_ path: String) async throws -> T {
+        var req = URLRequest(url: environment.baseURL.appendingPathComponent(environment.apiPrefix + path))
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 10
+        let (data, resp): (Data, URLResponse)
+        do { (data, resp) = try await URLSession.shared.data(for: req) }
+        catch { throw KalshiError.transport(error.localizedDescription) }
+        guard let http = resp as? HTTPURLResponse else { throw KalshiError.transport("no HTTP response") }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw KalshiError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}

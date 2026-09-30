@@ -161,6 +161,14 @@ struct ContentView: View {
                         }
                     }
                 }
+                if !model.health.isOK {
+                    Label {
+                        Text(model.health.summary + (model.healthChangedAt.map { " · since \(Fmt.gameTime($0))" } ?? "")
+                             + ". Numbers may be stale.")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.footnote).foregroundStyle(Color(nsColor: model.health.tint ?? .secondaryLabelColor))
                 }
                 if let err = snap?.errorMessage {
                     Label(err, systemImage: "exclamationmark.triangle")

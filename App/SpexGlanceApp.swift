@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import WidgetKit
 
 @main
@@ -44,19 +45,30 @@ struct SpexGlanceApp: App {
         MenuBarExtra {
             MenuBarView().environmentObject(model).preferredColorScheme(appearance.scheme)
         } label: {
+            // Health tints everything in the bar: ember when degraded, red when down, gray in
+            // maintenance. Text color survives the menu bar only as an attributed string.
+            let tint = model.health.tint
             if workMode {
                 // Work Mode: no logo, no "$" — a bare signed number, or a neutral dot.
-                if menuBarShowPnL, let n = model.menuBarNumber { Text(n) }
+                if menuBarShowPnL, let n = model.menuBarNumber { Text(MenuBarText.attributed(n, tint: tint)) }
+                else if let b = model.health.badge { Text(MenuBarText.attributed(b, tint: tint)) }
                 else { Image(systemName: "circle.dotted") }
             } else if menuBarShowPnL {
                 Label {
-                    Text(model.menuBarTitle)
+                    Text(MenuBarText.attributed(model.menuBarTitle, tint: tint))
                 } icon: {
-                    Image(nsImage: MenuBarIcon.image)
+                    Image(nsImage: MenuBarIcon.image(tint: tint))
+                }
+                .labelStyle(.titleAndIcon)
+            } else if let b = model.health.badge {
+                Label {
+                    Text(MenuBarText.attributed(b, tint: tint))
+                } icon: {
+                    Image(nsImage: MenuBarIcon.image(tint: tint))
                 }
                 .labelStyle(.titleAndIcon)
             } else {
-                Image(nsImage: MenuBarIcon.image)
+                Image(nsImage: MenuBarIcon.image(tint: tint))
             }
         }
         .menuBarExtraStyle(.window)
@@ -74,6 +86,11 @@ final class AppModel: ObservableObject {
     /// Seconds between Kalshi stamping the last message and it reaching us. Nil until a stamped
     /// message arrives; a few seconds is normal, tens of seconds means we're falling behind.
     @Published var feedLag: TimeInterval?
+    /// Kalshi's health as seen from here; drives the menu bar tint and the status banner.
+    @Published var health: ExchangeHealth = .ok
+    /// When `health` last left `.ok`, for "down since 12:40".
+    @Published var healthChangedAt: Date?
+    private let healthMonitor = ExchangeHealthMonitor()
     /// Group ids (game keys / combo tickers) currently expanded in the positions list.
     @Published var expandedGroups: Set<String> = []
     /// Set when the connected key turns out to have write scopes (checked once per launch).
@@ -98,7 +115,7 @@ final class AppModel: ObservableObject {
     var isConnected: Bool { credential != nil }
 
     var menuBarTitle: String {
-        guard let s = snapshot, !s.bets.isEmpty else { return "Spex" }
+        guard let s = snapshot, !s.bets.isEmpty else { return health.badge ?? "Spex" }
         return Fmt.dollars(s.totalUnrealized, signed: true)
     }
     /// Work Mode title: "+305.57" — no currency sign, nil when there is nothing to show.
@@ -119,9 +136,16 @@ final class AppModel: ObservableObject {
         ticker.onLifecycle = { [weak self] l in self?.applyLifecycle(l) }
         ticker.onState = { [weak self] s in
             self?.liveState = s
+            self?.healthMonitor.socketChanged(s)
             // A lag figure from before a drop or a quiet spell means nothing once we're back.
             if s != .live { self?.feedLag = nil }
         }
+        healthMonitor.onChange = { [weak self] h in
+            guard let self else { return }
+            self.health = h
+            if h.isOK { self.healthChangedAt = nil } else if self.healthChangedAt == nil { self.healthChangedAt = Date() }
+        }
+        if let cred = credential { healthMonitor.start(environment: cred.environment) }
         // Fills, sells, settlements and new orders arrive over the socket; the 5-minute poll is
         // reconciliation, so a missed message or a dropped socket can't leave stale numbers up.
         pollTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
@@ -163,6 +187,7 @@ final class AppModel: ObservableObject {
             }
         }
         var fresh = await Refresher.refresh()
+        healthMonitor.refreshFinished(error: fresh.errorMessage)
         // Keep any socket quote newer than the REST response.
         if let old = snapshot, old.environment == fresh.environment {
             for i in fresh.bets.indices {
@@ -273,6 +298,7 @@ final class AppModel: ObservableObject {
     func connect(_ cred: KalshiCredential) throws {
         try KeychainStore.save(cred)
         credential = cred
+        healthMonitor.start(environment: cred.environment)
         SnapshotCache.clear()
         snapshot = nil
         tickTimes = [:]
@@ -283,6 +309,7 @@ final class AppModel: ObservableObject {
 
     func disconnect() {
         ticker.stop()
+        healthMonitor.stop()
         reloadTask?.cancel()
         KeychainStore.delete()
         SnapshotCache.clear()
@@ -292,5 +319,16 @@ final class AppModel: ObservableObject {
         feedLag = nil
         lastTickAt = nil
         WidgetCenter.shared.reloadTimelines(ofKind: SharedIDs.widgetKind)
+    }
+}
+
+
+/// Colored text for the menu bar. Plain `Text(...).foregroundStyle` is ignored there; an
+/// attributed string's color is honored.
+enum MenuBarText {
+    static func attributed(_ s: String, tint: NSColor?) -> AttributedString {
+        var a = AttributedString(s)
+        if let tint { a.foregroundColor = Color(nsColor: tint) }
+        return a
     }
 }

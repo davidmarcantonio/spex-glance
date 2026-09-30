@@ -7,12 +7,26 @@ import AppKit
 /// template image: the tile takes the menu bar's tint and the mark shows through.
 /// Geometry matches docs/logo/spex-mark.svg in the Haruspex repo (64×64 space).
 enum MenuBarIcon {
-    static let image: NSImage = {
+    /// Normal: a template image, so the tile takes the menu bar's tint.
+    static let image: NSImage = render(color: nil)
+
+    /// Health tints. A colored image is not a template, so the menu bar shows the color as-is.
+    private static var tinted: [String: NSImage] = [:]
+    static func image(tint: NSColor?) -> NSImage {
+        guard let tint else { return image }
+        let key = tint.description
+        if let cached = tinted[key] { return cached }
+        let img = render(color: tint)
+        tinted[key] = img
+        return img
+    }
+
+    private static func render(color: NSColor?) -> NSImage {
         let disc: CGFloat = 18          // disc diameter, points
         let width: CGFloat = 21         // extra 3pt of air before the P&L text
         let inset: CGFloat = 2.6        // padding between disc edge and mark
         let img = NSImage(size: NSSize(width: width, height: disc), flipped: true) { _ in
-            NSColor.black.setFill()
+            (color ?? NSColor.black).setFill()
             NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: disc, height: disc),
                          xRadius: disc * 0.24, yRadius: disc * 0.24).fill()
 
@@ -44,7 +58,7 @@ enum MenuBarIcon {
             head.fill()
             return true
         }
-        img.isTemplate = true
+        img.isTemplate = color == nil
         return img
-    }()
+    }
 }

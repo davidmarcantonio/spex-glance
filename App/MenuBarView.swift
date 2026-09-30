@@ -15,6 +15,10 @@ struct MenuBarView: View {
                 liveDot
             }
             Divider()
+            if !model.health.isOK {
+                healthRow
+                Divider()
+            }
             if let s = model.snapshot, !s.bets.isEmpty {
                 ForEach(sort.sorted(s.groups)) { g in
                     VStack(alignment: .leading, spacing: 2) {
@@ -115,6 +119,24 @@ struct MenuBarView: View {
         }
         .padding(12)
         .frame(width: 360)
+    }
+
+    /// Shown only while Kalshi is not fully up: what's wrong, since when, and where to look.
+    private var healthRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color(nsColor: model.health.tint ?? .secondaryLabelColor))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(model.health.summary).font(.caption.weight(.medium))
+                if let t = model.healthChangedAt {
+                    Text("since \(Fmt.gameTime(t)) · numbers may be stale").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Button("Status page") { NSWorkspace.shared.open(URL(string: "https://kalshistatus.com")!) }
+                .font(.caption2)
+                .help("kalshistatus.com — an unofficial, community-run Kalshi status page")
+        }
     }
 
     private var liveDot: some View {

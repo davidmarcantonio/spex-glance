@@ -37,6 +37,8 @@ been launched at least once.) The menu bar item is there from first launch.
 | Widget says "Open Spex Glance to connect" after you connected | Both targets must sign with the same (paid) team so they share the keychain access group. On macOS a free Personal Team can't do App Groups at all. |
 | Menu bar dot says "socket: …" | Kalshi rejected the price subscription (usually a settled ticker). It clears on the next 5-minute refresh. |
 | Live dot is amber, "Ns behind" | Kalshi's messages are arriving late (their timestamps vs. your clock). Usually your network; also check your Mac's clock is set automatically. |
+| Menu bar icon is ember or red | Kalshi is degraded ("slow") or down; open the dropdown for the reason. Numbers on screen are the last good ones. It clears on its own when Kalshi recovers. |
+| Menu bar says "maint" | Kalshi is in a maintenance window (usually Thursday early morning ET). Nothing to do. |
 | A fill or payout didn't show up right away | Position and order pushes fall back to the 5-minute refresh if Kalshi rejects those channels for your key. Prices still stream. |
 | 401 on Test connection | The Key ID doesn't belong to the private key you imported. Make sure you opened the .txt for *that* key. |
 | A position you hold isn't listed | It's not a sports market. The footer says how many were skipped. |
