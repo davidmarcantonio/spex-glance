@@ -127,5 +127,9 @@ if [ "$PUBLISH" = "--publish" ]; then
   git tag -a "v$VERSION" -m "Spex Glance $VERSION"
   git push && git push --tags
   gh release create "v$VERSION" "$DMG" --title "Spex Glance $VERSION" --notes-file "$NOTES_MD"
+  # Tell spex.bet to redeploy so the site shows the new version (its workflow reads the latest release).
+  gh api repos/davidmarcantonio/spex.bets/dispatches -f event_type=release \
+    && echo "spex.bet redeploy requested." \
+    || echo "WARN: could not ping spex.bet (site updates on its daily run instead)."
   echo "Published. Sparkle clients see $VERSION on their next check (daily, or Check for Updates…)."
 fi
