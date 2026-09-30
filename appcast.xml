@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Spex Glance</title>
+    <item>
+      <title>Spex Glance 0.1.0</title>
+      <link>https://github.com/davidmarcantonio/spex-glance/releases/tag/v0.1.0</link>
+      <sparkle:version>1</sparkle:version>
+      <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <pubDate>Wed, 30 Sep 2026 01:12:37 -0700</pubDate>
+      <enclosure url="https://github.com/davidmarcantonio/spex-glance/releases/download/v0.1.0/SpexGlance-0.1.0.dmg" sparkle:edSignature="Q57FJUpzBVTUDTM1CQ/NHU0j/2fXpoU88g8RHF1aVGYp+lecOax2B1/kVb19z0Mr2HXMq6W0w3EghYL0nLhSCg==" length="2305940" type="application/octet-stream" />
+    </item>
+  </channel>
+</rss>
