@@ -1,6 +1,9 @@
 import Foundation
 import CloudKit
 import Combine
+import os
+
+private let log = Logger(subsystem: "bet.spex.glance", category: "sync")
 
 /// Live Line → iCloud. Opt-in (Settings → Charts → Live Line → iCloud). Plain CloudKit, private
 /// database, custom zone "LiveLine", one `Chunk` record per Mac per UTC hour, so two Macs never
@@ -125,7 +128,8 @@ final class LiveLineSync: ObservableObject {
 
     /// Called by the recorder after each local write. Debounced; one push a minute at most.
     func enqueue(hour: String) {
-        guard Self.enabled else { return }
+        guard Self.enabled else { log.notice("enqueue ignored: sync not enabled"); return }
+        log.notice("enqueue \(hour, privacy: .public)")
         pending.insert(hour)
         guard pushTask == nil else { return }
         pushTask = Task { @MainActor [weak self] in
@@ -159,12 +163,14 @@ final class LiveLineSync: ObservableObject {
             r["data"] = data as CKRecordValue
             records.append(r)
         }
-        guard !records.isEmpty else { return }
+        guard !records.isEmpty else { log.notice("push: nothing to send for \(hours.count) hour(s)"); return }
+        log.notice("push: \(records.count) record(s)")
         do {
             // Each record belongs to this Mac alone, so overwriting is always right.
             _ = try await db.modifyRecords(saving: records, deleting: [], savePolicy: .allKeys)
             if status != .syncing { status = .syncing }
         } catch {
+            log.error("push failed: \(error.localizedDescription, privacy: .public)")
             pending.formUnion(hours)   // try again next time
             if let ck = error as? CKError, ck.code == .notAuthenticated { status = .noAccount }
             else { status = .error(error.localizedDescription) }

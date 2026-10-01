@@ -4,7 +4,7 @@
 name: SpexGlance
 
 options:
-  bundleIdPrefix: bet.spex.glance   # legacy com.example.* groups stay in the entitlements for one release (Migration.swift); keep in sync with SharedIDs.bundlePrefix + entitlements
+  bundleIdPrefix: bet.spex.glance   # App Group is "<TeamID>.bet.spex.glance" (macOS form; a "group." id needs profile support cfprefsd did not grant). Legacy com.example.* groups stay in the entitlements for one release (Migration.swift); keep in sync with SharedIDs.bundlePrefix + entitlements
   deploymentTarget:
     macOS: "15.0"   # Apple-supported releases only: 15, 26, 27
   createIntermediateGroups: true
@@ -41,7 +41,7 @@ targets:
     entitlements:
       path: App/SpexGlance.entitlements
       properties:
-        com.apple.security.application-groups: [group.bet.spex.glance, group.com.example.spexglance]
+        com.apple.security.application-groups: ["$(TeamIdentifierPrefix)bet.spex.glance", group.com.example.spexglance]
         keychain-access-groups: ["$(AppIdentifierPrefix)bet.spex.glance.shared", "$(AppIdentifierPrefix)com.example.spexglance.shared"]
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
@@ -63,6 +63,7 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.finance
         SpexKeychainAccessGroup: "$(AppIdentifierPrefix)bet.spex.glance.shared"
+        SpexAppGroup: "$(TeamIdentifierPrefix)bet.spex.glance"
         # Bundled Space Grotesk (OFL) sits flat in Resources; "." tells AppKit to load fonts from there.
         ATSApplicationFontsPath: "."
         NSAppTransportSecurity:
@@ -97,7 +98,7 @@ targets:
     entitlements:
       path: Widget/SpexGlanceWidget.entitlements
       properties:
-        com.apple.security.application-groups: [group.bet.spex.glance, group.com.example.spexglance]
+        com.apple.security.application-groups: ["$(TeamIdentifierPrefix)bet.spex.glance", group.com.example.spexglance]
         keychain-access-groups: ["$(AppIdentifierPrefix)bet.spex.glance.shared", "$(AppIdentifierPrefix)com.example.spexglance.shared"]
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
@@ -108,6 +109,7 @@ targets:
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         SpexKeychainAccessGroup: "$(AppIdentifierPrefix)bet.spex.glance.shared"
+        SpexAppGroup: "$(TeamIdentifierPrefix)bet.spex.glance"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

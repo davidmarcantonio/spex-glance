@@ -45,5 +45,7 @@
 	<integer>86400</integer>
 	<key>SpexKeychainAccessGroup</key>
 	<string>$(AppIdentifierPrefix)bet.spex.glance.shared</string>
+	<key>SpexAppGroup</key>
+	<string>$(TeamIdentifierPrefix)bet.spex.glance</string>
 </dict>
 </plist>

@@ -56,7 +56,13 @@ public enum KalshiEnvironment: String, Codable, CaseIterable, Identifiable, Send
 public enum SharedIDs {
     /// Bundle-id prefix. Change this in ONE place (project.yml) and here.
     public static let bundlePrefix = "bet.spex.glance"
-    public static let appGroup = "group.\(bundlePrefix)"
+    /// "<TeamID>.bet.spex.glance" — the macOS form, authorized by the code signature alone. Read
+    /// from Info.plist where the build substitutes $(TeamIdentifierPrefix); the fallback only
+    /// matters for an unsigned build and then nothing is shared with the widget anyway.
+    public static let appGroup: String = {
+        if let g = Bundle.main.object(forInfoDictionaryKey: "SpexAppGroup") as? String, !g.isEmpty, !g.contains("$(") { return g }
+        return "group.\(bundlePrefix)"
+    }()
     /// Pre-0.3.0 ids. Read once by Migration, then dropped from the entitlements in a later release.
     public static let legacyBundlePrefix = "com.example.spexglance"
     public static let legacyAppGroup = "group.\(legacyBundlePrefix)"

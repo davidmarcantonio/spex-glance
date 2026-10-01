@@ -1,6 +1,9 @@
 import Foundation
 import CryptoKit
 import Security
+import os
+
+private let log = Logger(subsystem: "bet.spex.glance", category: "liveline")
 
 /// One Live Line sample: the sports total (cash + sports positions) and the unrealized P&L
 /// at one instant. Twenty-four bytes on disk.
@@ -74,7 +77,9 @@ public enum LiveLineStore {
         attrs[kSecValueData] = data
         attrs[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         attrs[kSecAttrSynchronizable] = false
-        return SecItemAdd(attrs as CFDictionary, nil) == errSecSuccess ? k : nil
+        let st = SecItemAdd(attrs as CFDictionary, nil)
+        if st != errSecSuccess { log.error("chunk key: SecItemAdd failed \(st)") }
+        return st == errSecSuccess ? k : nil
     }
 
     /// Move the chunk key from the pre-0.3.0 service/access group, if one is there and we have none.
@@ -144,12 +149,15 @@ public enum LiveLineStore {
     /// Append one sample to its hour's chunk. Cheap: a chunk is at most ~60 records.
     public static func append(_ s: LiveSample, env: KalshiEnvironment) {
         lock.lock(); defer { lock.unlock() }
-        guard let dir = directory(env), let key = key(create: true) else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard let dir = directory(env) else { log.error("append: no App Group container"); return }
+        guard let key = key(create: true) else { log.error("append: no chunk key (keychain add failed)"); return }
+        do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
+        catch { log.error("append: mkdir failed \(error.localizedDescription, privacy: .public)"); return }
         let url = dir.appendingPathComponent(hourName(s.ts) + ".bin")
         var samples = FileManager.default.fileExists(atPath: url.path) ? read(url, key: key) : []
         samples.append(s)
         write(samples, to: url, key: key)
+        log.notice("append: \(samples.count) sample(s) in \(url.lastPathComponent, privacy: .public)")
     }
 
     /// Every sample with `from <= ts <= to`, oldest first.
