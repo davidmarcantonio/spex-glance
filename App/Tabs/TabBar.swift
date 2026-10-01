@@ -8,12 +8,12 @@ struct TabBar: View {
     let select: (Prefs.MainTab) -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             ForEach(Prefs.MainTab.visible(workMode: workMode)) { tab in
                 pill(tab)
             }
-            Spacer()
         }
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Sections")
     }
@@ -23,14 +23,14 @@ struct TabBar: View {
         return Button {
             select(tab)
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Text(tab.label)
+                    .font(Theme.display(14, weight: on ? .bold : .medium))
                 Text("⌘\(String(tab.shortcutKey))")
-                    .font(.caption2)
-                    .opacity(0.6)
+                    .font(Theme.display(10, weight: .regular))
+                    .opacity(0.65)
             }
-            .font(.caption.weight(on ? .semibold : .regular))
-            .padding(.horizontal, 10).padding(.vertical, 5)
+            .padding(.horizontal, 16).padding(.vertical, 9)
             .background(on ? Color.accentColor : Color.secondary.opacity(0.15))
             .foregroundStyle(on ? Color.white : Color.primary)
             .clipShape(Capsule())
