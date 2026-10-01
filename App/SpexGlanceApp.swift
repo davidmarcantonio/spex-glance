@@ -133,6 +133,11 @@ final class AppModel: ObservableObject {
         ledgerTask = nil
     }
 
+    /// Live Line (opt-in): samples the sports total on ticks and refreshes; `liveLineUpdatedAt`
+    /// nudges the P&L chart.
+    let liveLine = LiveLineRecorder()
+    @Published var liveLineUpdatedAt: Date?
+
     /// Which section the window shows. Not persisted: the app opens on Positions — that's the glance.
     @Published var tab: Prefs.MainTab = .positions
 
@@ -209,6 +214,7 @@ final class AppModel: ObservableObject {
             if h.isOK { self.healthChangedAt = nil }
             else if self.healthChangedAt == nil || prev.kind != h.kind { self.healthChangedAt = Date() }
         }
+        liveLine.onSample = { [weak self] at in self?.liveLineUpdatedAt = at }
         if let cred = credential { healthMonitor.start(environment: cred.environment) }
         networkMonitor.start { [weak self] online in
             guard let self else { return }
@@ -292,6 +298,7 @@ final class AppModel: ObservableObject {
         snapshot = fresh
         WidgetCenter.shared.reloadTimelines(ofKind: SharedIDs.widgetKind)
         startLive()
+        liveLine.sample(fresh, force: true)
         Task { await refreshLedger() }
     }
 
@@ -310,6 +317,7 @@ final class AppModel: ObservableObject {
             snapshot = s
             tickTimes[t] = now
             lastTickAt = now
+            liveLine.sample(s)
             // Prices move constantly; give the widget a fresh copy at most once a minute.
             if now.timeIntervalSince(lastCacheWrite) > 60 { persistLive(s) }
         }
@@ -395,6 +403,7 @@ final class AppModel: ObservableObject {
     }
 
     func disconnect() {
+        if let env = credential?.environment { LiveLineStore.clear(env: env) }   // history goes with the key
         ticker.stop()
         healthMonitor.stop()
         reloadTask?.cancel()

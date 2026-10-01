@@ -54,6 +54,16 @@ enum Prefs {
         }
     }
 
+    /// Live Line is opt-in: off means nothing is ever written.
+    static let liveLineEnabledKey = "liveLineEnabled"
+    static let liveLineStoreKey = "liveLineStore"
+    /// Seconds since 1970; the chart's "since" date and the start of the All range.
+    static let liveLineEnabledAtKey = "liveLineEnabledAt"
+    enum LiveLineStore: String, CaseIterable, Identifiable {
+        case mac, icloud
+        var id: String { rawValue }
+    }
+
     static let pnlIncludeFeesKey = "pnlIncludeFees"
     static let pnlRangeKey = "pnlRange"
     enum PnLRange: String, CaseIterable, Identifiable {
@@ -117,6 +127,20 @@ struct SettingsView: View {
     @State private var loginError: String?
     @ObservedObject private var updater = Updater.shared
     @State private var autoUpdate = Updater.shared.automaticallyChecks
+    @AppStorage(Prefs.liveLineEnabledKey, store: Prefs.defaults) private var liveLineEnabled = false
+    @AppStorage(Prefs.liveLineStoreKey, store: Prefs.defaults) private var liveLineStore: Prefs.LiveLineStore = .mac
+    @AppStorage(Prefs.liveLineEnabledAtKey, store: Prefs.defaults) private var liveLineEnabledAt = 0.0
+    @State private var showStorageSheet = false
+    @State private var confirmClear = false
+    @State private var historyInfo: (chunks: Int, bytes: Int, oldest: Date?) = (0, 0, nil)
+    private var liveEnv: KalshiEnvironment { KeychainStore.load()?.environment ?? .prod }
+
+    private var historyLine: String {
+        guard historyInfo.chunks > 0 else { return "No samples yet — the first one lands on the next price tick." }
+        let since = historyInfo.oldest.map { Fmt.gameTime($0) } ?? "—"
+        let kb = max(1, historyInfo.bytes / 1024)
+        return "Recording since \(since) · \(kb) KB · 1-minute points for 24 h, 5-minute to 7 days, hourly after"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -155,6 +179,58 @@ struct SettingsView: View {
                 Text("System follows your Mac or iPhone's light/dark setting, including automatic switching.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+
+            Section("Charts") {
+                Toggle("Live Line", isOn: Binding(
+                    get: { liveLineEnabled },
+                    set: { on in
+                        if on { showStorageSheet = true }      // confirm where first; nothing written yet
+                        else { liveLineEnabled = false }       // data is kept; "Clear History…" deletes
+                    }))
+                Text("Charts your sports total over time on the P&L section. Off by default — turning it on stores a copy of your portfolio-value history. Nothing is stored while it's off.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if liveLineEnabled {
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Where it's stored").font(.body)
+                            Text(liveLineStore == .icloud
+                                 ? "iCloud · syncing between your Macs"
+                                 : "This Mac only · encrypted in the app container. Disconnect erases it.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Change…") { showStorageSheet = true }
+                    }
+                    HStack(alignment: .firstTextBaseline) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("History").font(.body)
+                            Text(historyLine).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Clear History…") { confirmClear = true }
+                            .disabled(historyInfo.chunks == 0)
+                    }
+                }
+            }
+            .sheet(isPresented: $showStorageSheet) {
+                LiveLineStorageSheet(pick: liveLineStore) { store in
+                    liveLineStore = store
+                    if !liveLineEnabled { liveLineEnabledAt = Date().timeIntervalSince1970 }
+                    liveLineEnabled = true
+                }
+            }
+            .alert("Clear Live Line history?", isPresented: $confirmClear) {
+                Button("Clear", role: .destructive) {
+                    LiveLineStore.clear(env: liveEnv)
+                    liveLineEnabledAt = Date().timeIntervalSince1970
+                    historyInfo = LiveLineStore.info(env: liveEnv)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Deletes every sample on this Mac. Recording continues from the next price tick.")
+            }
+            .onAppear { historyInfo = LiveLineStore.info(env: liveEnv) }
+            .onChange(of: liveLineEnabled) { _, _ in historyInfo = LiveLineStore.info(env: liveEnv) }
 
             Section("Menu bar") {
                 Toggle("Show unrealized P&L next to the icon", isOn: $menuBarShowPnL)

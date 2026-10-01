@@ -1,5 +1,7 @@
 import SwiftUI
+import AppKit
 import Charts
+import UniformTypeIdentifiers
 
 /// ⌘4 — realized P&L as a step chart rebuilt from Kalshi's settlements (no storage), plus the
 /// Live Line card once that opt-in exists. Never shown in Work Mode.
@@ -8,6 +10,10 @@ struct PnLTab: View {
     @AppStorage(Prefs.workModeKey, store: Prefs.defaults) private var workMode = false
     @AppStorage(Prefs.pnlIncludeFeesKey, store: Prefs.defaults) private var includeFees = true
     @AppStorage(Prefs.pnlRangeKey, store: Prefs.defaults) private var range: Prefs.PnLRange = .all
+    @AppStorage(Prefs.liveLineEnabledKey, store: Prefs.defaults) private var liveLineEnabled = false
+    @AppStorage(Prefs.liveLineStoreKey, store: Prefs.defaults) private var liveLineStore: Prefs.LiveLineStore = .mac
+    @AppStorage(Prefs.liveLineEnabledAtKey, store: Prefs.defaults) private var liveLineEnabledAt = 0.0
+    @State private var live: [LiveSample] = []
 
     var body: some View {
         let from = range.start
@@ -57,22 +63,105 @@ struct PnLTab: View {
                         .font(.caption2).foregroundStyle(.tertiary)
                 }
 
-                card {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Live Line is off").font(.headline)
-                            Text("Turn it on in Settings to chart your sports total over time.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                if liveLineEnabled {
+                    liveCard
+                } else {
+                    card {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Live Line is off").font(.headline)
+                                Text("Turn it on in Settings to chart your sports total over time.")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            SettingsLink { Text("Settings ⌘,") }
+                                .buttonStyle(SpexButtonStyle(filled: false))
                         }
-                        Spacer()
-                        SettingsLink { Text("Settings ⌘,") }
-                            .buttonStyle(SpexButtonStyle(filled: false))
                     }
                 }
             }
             .padding(20)
         }
         .background(Theme.paper)
+        .task(id: "\(range.rawValue)|\(liveLineEnabled)|\(model.liveLineUpdatedAt?.timeIntervalSince1970 ?? 0)") {
+            guard liveLineEnabled, let env = model.credential?.environment else { live = []; return }
+            let from = range.start
+            let xs = await Task.detached(priority: .userInitiated) { LiveLineStore.samples(env: env, from: from) }.value
+            if !Task.isCancelled { live = xs }
+        }
+    }
+
+    /// Live Line: the sports total sampled on every tick since the user turned it on.
+    private var liveCard: some View {
+        let last = live.last?.sportsTotal
+        let first = live.first?.sportsTotal
+        let delta = (last != nil && first != nil) ? last! - first! : nil
+        let since = liveLineEnabledAt > 0 ? Fmt.gameTime(Date(timeIntervalSince1970: liveLineEnabledAt)) : "today"
+        return card {
+            HStack(alignment: .firstTextBaseline) {
+                Text("LIVE LINE · SPORTS TOTAL")
+                    .font(Theme.display(10, weight: .medium)).tracking(0.8).foregroundStyle(.secondary)
+                Spacer()
+                if let delta {
+                    Text("\(Fmt.money(delta, signed: true, workMode: workMode)) \(range.label)")
+                        .font(.caption.monospacedDigit()).foregroundStyle(Fmt.pnlColor(delta))
+                }
+                Text(Fmt.money(last ?? model.snapshot?.sportsTotal, workMode: workMode))
+                    .font(Theme.display(20, weight: .bold).monospacedDigit())
+            }
+            if live.count < 2 {
+                Text(live.isEmpty ? "Waiting for the first samples — they land about once a minute while prices move."
+                                  : "One sample so far. The line appears with the next one.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 160)
+            } else {
+                let lo = live.map(\.sportsTotal).min()!, hi = live.map(\.sportsTotal).max()!
+                let pad = max(1, (hi - lo) * 0.15)
+                Chart {
+                    ForEach(Array(live.enumerated()), id: \.offset) { _, p in
+                        LineMark(x: .value("When", p.ts), y: .value("Total", p.sportsTotal))
+                            .interpolationMethod(.monotone)
+                            .foregroundStyle(StatTile.cobalt)
+                            .lineStyle(StrokeStyle(lineWidth: 2.5, lineJoin: .round))
+                    }
+                }
+                .chartYScale(domain: (lo - pad) ... (hi + pad))
+                .chartYAxis {
+                    AxisMarks(position: .trailing) { v in
+                        AxisGridLine()
+                        AxisValueLabel {
+                            if let d = v.as(Double.self) {
+                                Text(Fmt.money(d, workMode: workMode)).font(.caption2).monospacedDigit()
+                            }
+                        }
+                    }
+                }
+                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
+                .frame(height: 170)
+            }
+            HStack {
+                Text("Sampled on every tick since \(since) · \(liveLineStore == .icloud ? "synced with iCloud" : "stored on this Mac only") · \(live.count) point\(live.count == 1 ? "" : "s")")
+                    .font(.caption2).foregroundStyle(.tertiary)
+                Spacer()
+                Button("Save as CSV…") { exportCSV() }
+                    .font(.caption)
+                    .disabled(live.isEmpty)
+            }
+        }
+    }
+
+    private func exportCSV() {
+        guard let env = model.credential?.environment else { return }
+        let all = LiveLineStore.samples(env: env, from: nil)
+        let iso = ISO8601DateFormatter()
+        var text = "ts_iso,sports_total,unrealized\n"
+        for s in all { text += "\(iso.string(from: s.ts)),\(s.sportsTotal),\(s.unrealized)\n" }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "spex-live-line.csv"
+        panel.allowedContentTypes = [.commaSeparatedText]
+        if panel.runModal() == .OK, let url = panel.url {
+            try? text.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     private func chart(_ series: [(Date, Double)], from: Date?) -> some View {

@@ -37,7 +37,7 @@ public enum KeychainStore {
     /// "<TeamID>.<bundlePrefix>.shared", read from Info.plist (where the build system
     /// substitutes $(AppIdentifierPrefix)). nil when running unsigned, e.g. in a simulator
     /// without a team, in which case the item is app-private.
-    private static var accessGroup: String? {
+    static var accessGroup: String? {
         guard let g = Bundle.main.object(forInfoDictionaryKey: "SpexKeychainAccessGroup") as? String,
               !g.isEmpty, !g.contains("$(") else { return nil }
         return g
