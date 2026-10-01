@@ -44,6 +44,6 @@
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SpexKeychainAccessGroup</key>
-	<string>$(AppIdentifierPrefix)com.example.spexglance.shared</string>
+	<string>$(AppIdentifierPrefix)bet.spex.glance.shared</string>
 </dict>
 </plist>

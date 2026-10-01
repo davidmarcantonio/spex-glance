@@ -26,6 +26,6 @@
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
 	<key>SpexKeychainAccessGroup</key>
-	<string>$(AppIdentifierPrefix)com.example.spexglance.shared</string>
+	<string>$(AppIdentifierPrefix)bet.spex.glance.shared</string>
 </dict>
 </plist>

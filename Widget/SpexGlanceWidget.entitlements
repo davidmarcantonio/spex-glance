@@ -6,12 +6,14 @@
 	<true/>
 	<key>com.apple.security.application-groups</key>
 	<array>
+		<string>group.bet.spex.glance</string>
 		<string>group.com.example.spexglance</string>
 	</array>
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
+		<string>$(AppIdentifierPrefix)bet.spex.glance.shared</string>
 		<string>$(AppIdentifierPrefix)com.example.spexglance.shared</string>
 	</array>
 </dict>

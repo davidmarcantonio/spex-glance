@@ -54,8 +54,8 @@ forwards you to your Kalshi portfolio page.
 ## Build (about 10 minutes)
 
 1. Clone this repo and open a terminal in it.
-2. Optional: change every `com.example.spexglance` in `project.yml` to your own reverse-DNS
-   prefix (also in `Shared/KalshiEnvironment.swift`). Bundle IDs must be unique per Apple account.
+2. Required for your own build: change every `bet.spex.glance` in `project.yml` to your own reverse-DNS
+   prefix (also in `Shared/KalshiEnvironment.swift` and both `.entitlements`). Bundle IDs must be unique per Apple account.
 3. `scripts/gen.sh` — asks for your 10-character Team ID once (Xcode → Settings → Accounts),
    stores it in an untracked `.team` file, renders the app icon, and generates
    `SpexGlance.xcodeproj`.

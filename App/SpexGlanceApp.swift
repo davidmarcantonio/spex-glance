@@ -5,6 +5,11 @@ import WidgetKit
 @main
 struct SpexGlanceApp: App {
     @StateObject private var model = AppModel()
+
+    init() {
+        // Must run before AppModel reads the keychain or the App Group defaults.
+        Migration.run()
+    }
     @AppStorage(Prefs.appearanceKey, store: Prefs.defaults) private var appearance: Prefs.Appearance = .system
     @AppStorage(Prefs.menuBarShowPnLKey, store: Prefs.defaults) private var menuBarShowPnL = true
     @AppStorage(Prefs.workModeKey, store: Prefs.defaults) private var workMode = false

@@ -55,7 +55,10 @@ public enum KalshiEnvironment: String, Codable, CaseIterable, Identifiable, Send
 /// Keep these in sync with project.yml and the .entitlements files.
 public enum SharedIDs {
     /// Bundle-id prefix. Change this in ONE place (project.yml) and here.
-    public static let bundlePrefix = "com.example.spexglance"
+    public static let bundlePrefix = "bet.spex.glance"
     public static let appGroup = "group.\(bundlePrefix)"
+    /// Pre-0.3.0 ids. Read once by Migration, then dropped from the entitlements in a later release.
+    public static let legacyBundlePrefix = "com.example.spexglance"
+    public static let legacyAppGroup = "group.\(legacyBundlePrefix)"
     public static let widgetKind = "SpexGlanceOpenBets"
 }
