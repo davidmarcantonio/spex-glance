@@ -24,6 +24,20 @@ struct SpexGlanceApp: App {
                 Button("Check for Updates…") { Updater.shared.checkForUpdates() }
                     .disabled(!Updater.shared.canCheck)
             }
+            // View menu: ⌘1–⌘4 jump to a section, ⌘⇧[ / ⌘⇧] cycle. P&L is unavailable in Work Mode.
+            CommandGroup(after: .sidebar) {
+                ForEach(Prefs.MainTab.allCases) { tab in
+                    Button(tab.label) { model.selectTab(tab) }
+                        .keyboardShortcut(KeyEquivalent(tab.shortcutKey), modifiers: .command)
+                        .disabled(tab == .pnl && workMode)
+                }
+                Divider()
+                Button("Next Section") { model.cycleTab(1) }
+                    .keyboardShortcut("]", modifiers: [.command, .shift])
+                Button("Previous Section") { model.cycleTab(-1) }
+                    .keyboardShortcut("[", modifiers: [.command, .shift])
+                Divider()
+            }
             CommandMenu("Positions") {
                 Button("Expand / Collapse All") { model.toggleExpandAll() }
                     .keyboardShortcut("e", modifiers: .command)
@@ -94,6 +108,26 @@ final class AppModel: ObservableObject {
     /// False when the Mac has no network path. Drives the "Computer network offline" line.
     @Published var isOnline = true
     private let networkMonitor = NetworkMonitor()
+    /// Which section the window shows. Not persisted: the app opens on Positions — that's the glance.
+    @Published var tab: Prefs.MainTab = .positions
+
+    private var workModeOn: Bool { Prefs.defaults.bool(forKey: Prefs.workModeKey) }
+    /// ⌘1–⌘4. P&L is refused while Work Mode is on.
+    func selectTab(_ t: Prefs.MainTab) {
+        if t == .pnl, workModeOn { return }
+        tab = t
+    }
+    /// ⌘⇧] / ⌘⇧[: wraps around, skipping P&L in Work Mode.
+    func cycleTab(_ delta: Int) {
+        let all = Prefs.MainTab.visible(workMode: workModeOn)
+        let i = all.firstIndex(of: tab) ?? 0
+        tab = all[(i + delta + all.count) % all.count]
+    }
+    /// Work Mode flipped on while P&L was showing: fall back to Positions.
+    func workModeChanged(_ on: Bool) {
+        if on, tab == .pnl { tab = .positions }
+    }
+
     /// Group ids (game keys / combo tickers) currently expanded in the positions list.
     @Published var expandedGroups: Set<String> = []
     /// Set when the connected key turns out to have write scopes (checked once per launch).

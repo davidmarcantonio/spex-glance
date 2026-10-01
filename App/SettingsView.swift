@@ -28,6 +28,32 @@ enum Prefs {
     static let sportFilterKey = "sportFilter"
     static let sortKey = "groupSort"
 
+    /// Sections of the main window. ⌘1–⌘4; P&L is hidden in Work Mode.
+    enum MainTab: String, CaseIterable, Identifiable {
+        case positions, orders, settled, pnl
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .positions: return "Positions"
+            case .orders: return "Orders"
+            case .settled: return "Settled"
+            case .pnl: return "P&L"
+            }
+        }
+        var shortcutKey: Character {
+            switch self {
+            case .positions: return "1"
+            case .orders: return "2"
+            case .settled: return "3"
+            case .pnl: return "4"
+            }
+        }
+        /// Tabs shown for the current mode: everything, minus P&L in Work Mode.
+        static func visible(workMode: Bool) -> [MainTab] {
+            allCases.filter { !(workMode && $0 == .pnl) }
+        }
+    }
+
     enum GroupSort: String, CaseIterable, Identifiable {
         case liveFirst, soonest, latest
         var id: String { rawValue }

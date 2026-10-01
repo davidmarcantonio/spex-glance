@@ -40,6 +40,7 @@ struct ContentView: View {
                     .environmentObject(model)
             }
         // A widget tap hands its URL to the app; forward it to the browser.
+        .onChange(of: workMode) { _, on in model.workModeChanged(on) }
         .onOpenURL { url in
             if url.scheme == "https" { Browser.open(url) }
         }
@@ -99,9 +100,6 @@ struct ContentView: View {
         // A stale selection (no positions in that sport any more) falls back to All.
         let active = sports.contains(sportFilter) ? sportFilter : ""
         let groups = sort.sorted(allGroups.filter { SportFilterBar.matches($0, active) })
-        let orders = (snap?.orders ?? []).filter {
-            active.isEmpty || $0.sport == active || (active == SportFilterBar.combos && $0.eventTitle.hasPrefix("Combo:"))
-        }
         let marketCount = groups.reduce(0) { $0 + $1.bets.count }
         VStack(spacing: 0) {
             // Fixed header: brand, money strip, P&L line, filter row — each block separated by an
@@ -215,73 +213,22 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Divider()
 
-            ZStack {
-                if sports.count > 1 {
-                    SportFilterBar(sports: sports, selection: $sportFilter, active: active)
-                }
-                HStack {
-                    Spacer()
-                    Menu {
-                        Picker("Sort", selection: $sort) {
-                            ForEach(Prefs.GroupSort.allCases) { Label($0.label, systemImage: $0.symbol).tag($0) }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.caption.weight(.semibold))
-                            .padding(6)
-                            .background(Color.secondary.opacity(0.15), in: Circle())
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help("Sort: \(sort.label)")
-                    .accessibilityLabel("Sort games")
-                }
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity)
+            TabBar(selection: model.tab, workMode: workMode) { model.selectTab($0) }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 20)
             Divider()
 
-        List {
-            Section(sectionTitle(active: active, games: groups.count, markets: marketCount)) {
-                if !groups.isEmpty {
-                    ForEach(groups) { g in
-                        GroupRow(group: g, expanded: Binding(
-                            get: { model.expandedGroups.contains(g.id) },
-                            set: { _ in model.toggleExpanded(g.id) }))
-                    }
-                } else if active.isEmpty {
-                    Text(model.isRefreshing ? "Loading…" : "No open sports positions.").foregroundStyle(.secondary)
-                } else {
-                    Text("No open \(active.lowercased()) positions.").foregroundStyle(.secondary)
-                }
-                if let h = snap?.hiddenNonSports, h > 0 {
-                    Text("\(h) non-sports position\(h == 1 ? "" : "s") not shown")
-                        .font(.footnote).foregroundStyle(.tertiary)
-                }
+            switch model.tab {
+            case .positions:
+                PositionsTab(sports: sports, active: active, sportFilter: $sportFilter, sort: $sort,
+                             groups: groups, marketCount: marketCount, hiddenNonSports: snap?.hiddenNonSports ?? 0)
+            case .orders:
+                OrdersTab(orders: snap?.orders ?? [])
+            case .settled:
+                PlaceholderTab(title: "Settled", note: "Won and lost markets land here in the next beta.")
+            case .pnl:
+                PlaceholderTab(title: "P&L", note: "Realized P&L chart lands here in the next beta.")
             }
-
-            if !orders.isEmpty {
-                Section("Resting orders (\(orders.count))") {
-                    ForEach(orders) { o in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(o.eventTitle).lineLimit(1)
-                                Text("\(o.isBuy ? "Buy" : "Sell") \(Fmt.contracts(o.remaining)) \(o.sideTitle)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(Fmt.cents(o.limitDollars)).monospacedDigit()
-                        }
-                    }
-                }
-            }
-
-        }
-        .refreshable { await model.refresh() }
-        .scrollContentBackground(.hidden)
-        .background(Theme.paper)
 
         if !workMode {
         Divider()
@@ -299,11 +246,6 @@ struct ContentView: View {
         }
         }
         .background(Theme.paper)
-    }
-
-    private func sectionTitle(active: String, games: Int, markets: Int) -> String {
-        let what = active.isEmpty ? "Open sports bets" : "Open \(active.lowercased()) bets"
-        return "\(what) (\(games) game\(games == 1 ? "" : "s") · \(markets) market\(markets == 1 ? "" : "s"))"
     }
 
 }
