@@ -65,7 +65,11 @@ final class LiveLineSync: ObservableObject {
     func start(env: KalshiEnvironment) {
         self.env = env
         guard Self.enabled else { stop(); return }
-        guard !running else { return }
+        if running {
+            // Already up: treat a repeat start (Change… → iCloud again) as "try now".
+            Task { await checkAccount(thenPull: true) }
+            return
+        }
         running = true
         status = .checking
         observer = NotificationCenter.default.addObserver(forName: .CKAccountChanged, object: nil, queue: .main) { [weak self] _ in
@@ -139,7 +143,9 @@ final class LiveLineSync: ObservableObject {
     }
 
     private func pushPending() async {
-        guard let env, accountOK, !pending.isEmpty, await ensureZone() else { return }
+        guard let env, !pending.isEmpty else { return }
+        if !accountOK { await checkAccount(thenPull: false); guard accountOK else { return } }
+        guard await ensureZone() else { return }
         let hours = pending; pending = []
         var records: [CKRecord] = []
         for h in hours {
