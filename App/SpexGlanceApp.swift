@@ -220,7 +220,18 @@ final class AppModel: ObservableObject {
             else if self.healthChangedAt == nil || prev.kind != h.kind { self.healthChangedAt = Date() }
         }
         liveLine.onSample = { [weak self] at in self?.liveLineUpdatedAt = at }
-        if let cred = credential { healthMonitor.start(environment: cred.environment) }
+        NotificationCenter.default.addObserver(forName: .liveLineMerged, object: nil, queue: .main) { [weak self] _ in
+            self?.liveLineUpdatedAt = Date()
+        }
+        // Settings flips the Live Line prefs; (re)evaluate sync whenever they change.
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: Prefs.defaults, queue: .main) { [weak self] _ in
+            guard let self, let env = self.credential?.environment else { return }
+            LiveLineSync.shared.start(env: env)
+        }
+        if let cred = credential {
+            healthMonitor.start(environment: cred.environment)
+            LiveLineSync.shared.start(env: cred.environment)
+        }
         networkMonitor.start { [weak self] online in
             guard let self else { return }
             let wasOnline = self.isOnline
@@ -398,6 +409,7 @@ final class AppModel: ObservableObject {
         try KeychainStore.save(cred)
         credential = cred
         healthMonitor.start(environment: cred.environment)
+        LiveLineSync.shared.start(env: cred.environment)
         SnapshotCache.clear()
         snapshot = nil
         ledger = nil
@@ -409,6 +421,7 @@ final class AppModel: ObservableObject {
 
     func disconnect() {
         if let env = credential?.environment { LiveLineStore.clear(env: env) }   // history goes with the key
+        LiveLineSync.shared.stop()
         ticker.stop()
         healthMonitor.stop()
         reloadTask?.cancel()

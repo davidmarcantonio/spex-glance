@@ -65,9 +65,3 @@ struct LiveLineStorageSheet: View {
         .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
-
-/// iCloud sync for Live Line. Lands once the CloudKit container is provisioned; until then the
-/// option is shown but disabled, and everything stays on this Mac.
-enum LiveLineSync {
-    static let available = false
-}

@@ -39,8 +39,8 @@ public enum LiveLineStore {
         f.dateFormat = "yyyyMMddHH"
         return f
     }()
-    static func hourName(_ d: Date) -> String { hourFormatter.string(from: d) }
-    static func hourStart(_ name: String) -> Date? { hourFormatter.date(from: name) }
+    public static func hourName(_ d: Date) -> String { hourFormatter.string(from: d) }
+    public static func hourStart(_ name: String) -> Date? { hourFormatter.date(from: name) }
 
     // MARK: Key
 
@@ -166,6 +166,43 @@ public enum LiveLineStore {
             out += read(dir.appendingPathComponent(n), key: key)
         }
         return out.filter { s in (from == nil || from! <= s.ts) && s.ts <= to }.sorted { $0.ts < $1.ts }
+    }
+
+    // MARK: Sync hooks (plaintext in, plaintext out; the cloud copy is protected by Apple's own encryption)
+
+    /// Every hour that has a chunk, oldest first.
+    public static func hours(env: KalshiEnvironment) -> [String] {
+        guard let dir = directory(env), let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
+        return names.filter { $0.hasSuffix(".bin") }.map { String($0.dropLast(4)) }.sorted()
+    }
+
+    /// The hour's samples as the flat record array (not sealed), for upload. Nil if no chunk.
+    public static func chunkData(env: KalshiEnvironment, hour: String) -> Data? {
+        lock.lock(); defer { lock.unlock() }
+        guard let dir = directory(env), let key = key(create: false) else { return nil }
+        let url = dir.appendingPathComponent(hour + ".bin")
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let samples = read(url, key: key)
+        return samples.isEmpty ? nil : encode(samples)
+    }
+
+    /// Union a downloaded record array into the local chunk (dedupe by timestamp). True if it added anything.
+    @discardableResult
+    public static func mergeChunk(env: KalshiEnvironment, hour: String, data: Data) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let dir = directory(env), let key = key(create: true) else { return false }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(hour + ".bin")
+        let mine = FileManager.default.fileExists(atPath: url.path) ? read(url, key: key) : []
+        var byMs: [Int64: LiveSample] = [:]
+        for s in mine { byMs[Int64(s.ts.timeIntervalSince1970 * 1000)] = s }
+        var added = false
+        for s in decode(data) {
+            let k = Int64(s.ts.timeIntervalSince1970 * 1000)
+            if byMs[k] == nil { byMs[k] = s; added = true }
+        }
+        if added { write(byMs.values.sorted { $0.ts < $1.ts }, to: url, key: key) }
+        return added
     }
 
     /// (chunk count, bytes on disk, oldest sample hour) for the Settings "History" row.

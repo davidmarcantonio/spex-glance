@@ -24,7 +24,10 @@ final class LiveLineRecorder {
         Task.detached(priority: .utility) {
             LiveLineStore.append(sample, env: env)
             if downsample { LiveLineStore.downsample(env: env) }
-            await MainActor.run { self.onSample?(now) }
+            await MainActor.run {
+                self.onSample?(now)
+                LiveLineSync.shared.enqueue(hour: LiveLineStore.hourName(now))
+            }
         }
     }
 }

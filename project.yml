@@ -46,6 +46,9 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.security.files.user-selected.read-write: true
+        # Live Line → iCloud (opt-in). Private database only; see App/LiveLineSync.swift.
+        com.apple.developer.icloud-services: [CloudKit]
+        com.apple.developer.icloud-container-identifiers: [iCloud.bet.spex.glance]
         # Sparkle 2 inside the sandbox reaches its XPC services by these names.
         com.apple.security.temporary-exception.mach-lookup.global-name:
           - "$(PRODUCT_BUNDLE_IDENTIFIER)-spks"

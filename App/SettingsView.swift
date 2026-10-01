@@ -133,6 +133,9 @@ struct SettingsView: View {
     @State private var showStorageSheet = false
     @State private var confirmClear = false
     @State private var historyInfo: (chunks: Int, bytes: Int, oldest: Date?) = (0, 0, nil)
+    @ObservedObject private var sync = LiveLineSync.shared
+    @State private var offerCloudDelete = false
+    @State private var cloudDeleteError: String?
     private var liveEnv: KalshiEnvironment { KeychainStore.load()?.environment ?? .prod }
 
     private var historyLine: String {
@@ -194,9 +197,10 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Where it's stored").font(.body)
                             Text(liveLineStore == .icloud
-                                 ? "iCloud · syncing between your Macs"
+                                 ? sync.status.line + (sync.lastPullAt.map { " Last sync \(Fmt.relative($0))." } ?? "")
                                  : "This Mac only · encrypted in the app container. Disconnect erases it.")
-                                .font(.footnote).foregroundStyle(.secondary)
+                                .font(.footnote)
+                                .foregroundStyle(liveLineStore == .icloud && sync.status != .syncing && sync.status != .checking ? Color.orange : Color.secondary)
                         }
                         Spacer()
                         Button("Change…") { showStorageSheet = true }
@@ -214,11 +218,30 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showStorageSheet) {
                 LiveLineStorageSheet(pick: liveLineStore) { store in
+                    let was = liveLineStore
                     liveLineStore = store
                     if !liveLineEnabled { liveLineEnabledAt = Date().timeIntervalSince1970 }
                     liveLineEnabled = true
+                    if store == .icloud {
+                        // Existing local history goes up too, so a second Mac sees the whole line.
+                        LiveLineSync.shared.start(env: liveEnv)
+                        LiveLineSync.shared.uploadAll()
+                    } else if was == .icloud {
+                        offerCloudDelete = true
+                    }
                 }
             }
+            .alert("Also delete the iCloud copy?", isPresented: $offerCloudDelete) {
+                Button("Delete from iCloud", role: .destructive) {
+                    Task { cloudDeleteError = await LiveLineSync.shared.deleteCloudCopy() }
+                }
+                Button("Keep it", role: .cancel) {}
+            } message: {
+                Text("Live Line now stays on this Mac. The copy in your iCloud can be removed too; other Macs keep what they already downloaded.")
+            }
+            .alert("Couldn't delete from iCloud", isPresented: Binding(get: { cloudDeleteError != nil }, set: { if !$0 { cloudDeleteError = nil } })) {
+                Button("OK") {}
+            } message: { Text(cloudDeleteError ?? "") }
             .alert("Clear Live Line history?", isPresented: $confirmClear) {
                 Button("Clear", role: .destructive) {
                     LiveLineStore.clear(env: liveEnv)
