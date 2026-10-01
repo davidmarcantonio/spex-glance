@@ -120,7 +120,7 @@ struct PnLTab: View {
                 Chart {
                     ForEach(Array(live.enumerated()), id: \.offset) { _, p in
                         LineMark(x: .value("When", p.ts), y: .value("Total", p.sportsTotal))
-                            .interpolationMethod(.monotone)
+                            .interpolationMethod(.linear)   // a balance: no invented curves between samples
                             .foregroundStyle(StatTile.cobalt)
                             .lineStyle(StrokeStyle(lineWidth: 2.5, lineJoin: .round))
                     }
