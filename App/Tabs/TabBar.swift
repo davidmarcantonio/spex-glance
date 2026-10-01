@@ -31,9 +31,9 @@ struct TabBar: View {
                     .opacity(0.65)
             }
             .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(on ? Color.accentColor : Color.secondary.opacity(0.15))
+            .background(on ? Color.accentColor : Color.secondary.opacity(0.15),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .foregroundStyle(on ? Color.white : Color.primary)
-            .clipShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
