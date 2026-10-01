@@ -174,6 +174,36 @@ public struct EventResponse: Codable, Sendable {
 
 /// Series carry the category/tag metadata Kalshi uses for discovery.
 /// Sports series look like: category "Sports", tags ["Baseball"].
+/// GET /portfolio/settlements — one row per market you held when it settled.
+/// Field names verified against docs.kalshi.com, Sep 30 2026.
+public struct SettlementsResponse: Codable, Sendable {
+    public var settlements: [Settlement]
+    public var cursor: String?
+}
+public struct Settlement: Codable, Sendable {
+    public var ticker: String
+    public var event_ticker: String?
+    /// "yes" | "no" | "scalar"
+    public var market_result: String?
+    public var yes_count_fp: Flex?
+    public var yes_total_cost_dollars: Flex?
+    public var no_count_fp: Flex?
+    public var no_total_cost_dollars: Flex?
+    /// INTEGER CENTS. The one field on this endpoint with no `_dollars` twin — divide by 100.
+    public var revenue: Flex?
+    /// Fixed-point dollars.
+    public var fee_cost: Flex?
+    public var settled_time: String?
+    /// Per-contract payout in cents, nullable.
+    public var value: Flex?
+
+    public var revenueDollars: Double { (revenue?.value ?? 0) / 100 }
+    public var costDollars: Double { (yes_total_cost_dollars?.value ?? 0) + (no_total_cost_dollars?.value ?? 0) }
+    public var feeDollars: Double { fee_cost?.value ?? 0 }
+    public var heldYes: Bool { (yes_count_fp?.value ?? 0) > 0 }
+    public var heldNo: Bool { (no_count_fp?.value ?? 0) > 0 }
+}
+
 public struct Series: Codable, Sendable {
     public var ticker: String
     public var title: String?

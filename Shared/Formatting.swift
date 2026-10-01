@@ -17,6 +17,22 @@ public enum Fmt {
         return v < 0 ? "-" + s : s
     }
 
+    /// `dollars`, minus the "$" when Work Mode is on — the one place that rule lives.
+    public static func money(_ v: Double?, signed: Bool = false, workMode: Bool) -> String {
+        let s = dollars(v, signed: signed)
+        return workMode ? s.replacingOccurrences(of: "$", with: "") : s
+    }
+
+    /// "Today", "Yesterday", "Sep 28" — section headers for a day of settlements.
+    public static func dayLabel(_ d: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return "Today" }
+        if cal.isDateInYesterday(d) { return "Yesterday" }
+        let f = DateFormatter()
+        f.dateFormat = cal.isDate(d, equalTo: Date(), toGranularity: .year) ? "EEE, MMM d" : "MMM d, yyyy"
+        return f.string(from: d)
+    }
+
     /// 0.58 -> "58¢"
     public static func cents(_ v: Double?) -> String {
         guard let v else { return "—" }

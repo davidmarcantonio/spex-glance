@@ -108,6 +108,31 @@ final class AppModel: ObservableObject {
     /// False when the Mac has no network path. Drives the "Computer network offline" line.
     @Published var isOnline = true
     private let networkMonitor = NetworkMonitor()
+    /// Settled markets (the Settled tab and the realized chart). Cached; refreshed incrementally
+    /// after every positions refresh, so a settlement push lands here within seconds.
+    @Published var ledger: Ledger? = LedgerCache.load()
+    @Published var isRefreshingLedger = false
+    private var ledgerTask: Task<Void, Never>?
+
+    func refreshLedger() async {
+        guard let cred = credential else { return }
+        if let t = ledgerTask { await t.value; return }
+        let task = Task { @MainActor in
+            self.isRefreshingLedger = true
+            defer { self.isRefreshingLedger = false }
+            do {
+                let l = try await LedgerBuilder.build(client: KalshiClient(credential: cred), existing: self.ledger)
+                self.ledger = l
+                LedgerCache.save(l)
+            } catch {
+                // Keep the cached ledger; the positions refresh already surfaces API errors.
+            }
+        }
+        ledgerTask = task
+        await task.value
+        ledgerTask = nil
+    }
+
     /// Which section the window shows. Not persisted: the app opens on Positions — that's the glance.
     @Published var tab: Prefs.MainTab = .positions
 
@@ -267,6 +292,7 @@ final class AppModel: ObservableObject {
         snapshot = fresh
         WidgetCenter.shared.reloadTimelines(ofKind: SharedIDs.widgetKind)
         startLive()
+        Task { await refreshLedger() }
     }
 
     private func startLive() {
@@ -361,6 +387,7 @@ final class AppModel: ObservableObject {
         healthMonitor.start(environment: cred.environment)
         SnapshotCache.clear()
         snapshot = nil
+        ledger = nil
         tickTimes = [:]
         scopeChecked = false
         keyScopeWarning = nil
@@ -375,6 +402,7 @@ final class AppModel: ObservableObject {
         SnapshotCache.clear()
         credential = nil
         snapshot = nil
+        ledger = nil
         tickTimes = [:]
         feedLag = nil
         lastTickAt = nil

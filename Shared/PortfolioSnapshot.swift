@@ -758,7 +758,7 @@ public enum SnapshotBuilder {
 }
 
 /// Run `op` over `items` with at most `limit` in flight. Any failure fails the whole batch.
-private func fetchConcurrently<T: Sendable>(_ items: [String], limit: Int,
+func fetchConcurrently<T: Sendable>(_ items: [String], limit: Int,
                                             _ op: @escaping @Sendable (String) async throws -> T) async throws -> [(String, T)] {
     try await withThrowingTaskGroup(of: (String, T).self) { group in
         var out: [(String, T)] = []
@@ -801,6 +801,7 @@ public enum SnapshotCache {
     public static func clear() {
         defaults.removeObject(forKey: key)
         defaults.removeObject(forKey: MetaCache.eventsKey)
+        LedgerCache.clear()
         // series cache is account-independent; keep it
     }
 }

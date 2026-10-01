@@ -99,6 +99,22 @@ public struct KalshiClient: Sendable {
         return all
     }
 
+    /// Every settlement, newest first as Kalshi returns them. `since` adds `min_ts` so an
+    /// incremental refresh only pages what's new.
+    public func settlements(since: Date? = nil) async throws -> [Settlement] {
+        var all: [Settlement] = []
+        var cursor: String? = nil
+        repeat {
+            var q = ["limit": "1000"]
+            if let since { q["min_ts"] = String(Int(since.timeIntervalSince1970)) }
+            if let c = cursor { q["cursor"] = c }
+            let page: SettlementsResponse = try await get("/portfolio/settlements", query: q)
+            all += page.settlements
+            cursor = (page.cursor?.isEmpty == false) ? page.cursor : nil
+        } while cursor != nil
+        return all
+    }
+
     /// Batch lookup. Kalshi accepts a comma-separated `tickers` filter; chunk to stay polite.
     public func markets(tickers: [String]) async throws -> [Market] {
         var out: [Market] = []

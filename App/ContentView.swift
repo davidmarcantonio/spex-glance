@@ -225,9 +225,9 @@ struct ContentView: View {
             case .orders:
                 OrdersTab(orders: snap?.orders ?? [])
             case .settled:
-                PlaceholderTab(title: "Settled", note: "Won and lost markets land here in the next beta.")
+                SettledTab()
             case .pnl:
-                PlaceholderTab(title: "P&L", note: "Realized P&L chart lands here in the next beta.")
+                PnLTab()
             }
 
         if !workMode {

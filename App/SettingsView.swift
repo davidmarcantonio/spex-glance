@@ -54,6 +54,27 @@ enum Prefs {
         }
     }
 
+    static let pnlIncludeFeesKey = "pnlIncludeFees"
+    static let pnlRangeKey = "pnlRange"
+    enum PnLRange: String, CaseIterable, Identifiable {
+        case day, week, month, all
+        var id: String { rawValue }
+        var label: String {
+            switch self { case .day: return "1D"; case .week: return "7D"; case .month: return "30D"; case .all: return "All" }
+        }
+        var title: String {
+            switch self { case .day: return "last 24 hours"; case .week: return "last 7 days"; case .month: return "last 30 days"; case .all: return "since day one" }
+        }
+        var start: Date? {
+            switch self {
+            case .day: return Date().addingTimeInterval(-86400)
+            case .week: return Date().addingTimeInterval(-7 * 86400)
+            case .month: return Date().addingTimeInterval(-30 * 86400)
+            case .all: return nil
+            }
+        }
+    }
+
     enum GroupSort: String, CaseIterable, Identifiable {
         case liveFirst, soonest, latest
         var id: String { rawValue }
